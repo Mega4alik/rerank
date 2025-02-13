@@ -1,3 +1,8 @@
+model_temp
+temp
+config.py
+
+__pycache__
 # Cache objects
 packer_cache/
 
