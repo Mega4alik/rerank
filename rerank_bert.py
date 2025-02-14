@@ -64,19 +64,19 @@ class DataCollator:
 	
 
 	def __call__(self, features) -> Dict[str, torch.Tensor]:		
-		batch = {"input_values": [], "labels":[], "chunks_list":[], "labels_list":[], "question":[]} #
+		batch = {"input_values": [], "labels":[]} #, "chunks_list":[], "labels_list":[], "question":[] -- COHERE
 		for x in features:
 			question, labels_list, chunks_list = x["question"], x["labels_list"], x["chunks_list"]
 			question_emb, chunks_emb = emb_cache[hashf(question)], []
 			for chunks in chunks_list:
 				chunks_emb.append( [emb_cache[hashf(chunk)] for chunk in chunks] )
-			#if not COHERE_EVAL: chunks_emb, labels_list = self.shuffle_lists(chunks_emb, labels_list)
+			if not COHERE_EVAL: chunks_emb, labels_list = self.shuffle_lists(chunks_emb, labels_list)
 			input_values, labels = [question_emb], [0] #input value: list of embeddings(list), labels: list of 0/1
 			for i, embs in enumerate(chunks_emb):
 				for emb in embs: input_values.append(emb)
 				labels += labels_list[i] #seq
 
-			input_values, labels = torch.tensor(input_values), torch.tensor(labels) #, dtype=torch.int32
+			input_values, labels = torch.tensor(input_values), torch.tensor(labels) #,  dtype=torch.int32
 			batch["input_values"].append(input_values)
 			batch["labels"].append(labels)
 			if COHERE_EVAL:
@@ -218,14 +218,14 @@ if 1==2: #Inference
 else: #Train/Eval
 	#prepare data
 	emb_cache = {}
-	dataset = multihop_qa_prepare_data() #2.2k
-	dataset += msmarco_prepare_data() #2k
+	#dataset = multihop_qa_prepare_data() #2.2k
+	dataset =  msmarco_prepare_data(2) #test[:2k] for train, validation[:100] for test
 	make_embeddings(dataset)	
 	d = dataset_to_dict(dataset)
 	del dataset
 	mydataset = Dataset.from_dict(d)
 	del d
-	mydataset = mydataset.train_test_split(test_size=0.01, seed=42) #0.01
+	mydataset = mydataset.train_test_split(test_size=0.5, seed=42) #0.01
 	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
 	#endOf prepare data
 	
@@ -265,7 +265,9 @@ else: #Train/Eval
 		eval_dataset=val_dataset,
 		#tokenizer=processor.feature_extractor,
 	)
-	#trainer.train("./model_temp/checkpoint-1000")
-	trainer._load_from_checkpoint("./model_temp/checkpoint-11500")
+	#trainer.train()
+	
+	#evaluate
+	trainer._load_from_checkpoint("./model_temp/checkpoint-8500")
 	trainer.evaluate()
 

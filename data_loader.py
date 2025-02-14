@@ -104,9 +104,9 @@ def multihop_qa_prepare_data():
 	return dataset
 
 
-def msmarco_prepare_data():
-	dataset = load_dataset("microsoft/ms_marco", 'v1.1', split="test") #features: ['answers', 'passages', 'query', 'query_id', 'query_type', 'wellFormedAnswers'],  num_rows: 9650	
-	datasize, dataset2 = 2000, [] #len(dataset["passages"])
+def msmarco_prepare_data(mode): #1-train, 2-test
+	dataset = load_dataset("microsoft/ms_marco", 'v1.1', split="test" if mode==1 else "validation") #features: ['answers', 'passages', 'query', 'query_id', 'query_type', 'wellFormedAnswers'],  num_rows: 9650	
+	datasize, dataset2 = (2000 if mode==1 else 100), []
 	dataset = dataset.to_pandas()
 	for i in range(datasize):
 		chunks_list, labels_list, chunks_n = [], [], 0
@@ -136,7 +136,7 @@ def msmarco_prepare_data():
 
 
 def financebench_prepare_data():
-	arr = json.loads(file_get_contents("./data/financebench.json"))	
+	arr = json.loads(file_get_contents("./data/financebench_3M_2018_10K.json"))	
 	datasize, dataset, chunks_list_all = len(arr), [], []
 	for i in range(511): chunks_list_all.append( [ arr[i]['content'] ] )
 
@@ -148,8 +148,6 @@ def financebench_prepare_data():
 			labels_list[x["idx"]] = [1]
 			dataset.append( (question, chunks_list, labels_list) )
 	return dataset
-
-
 			
 
 def analyze(dataset):
