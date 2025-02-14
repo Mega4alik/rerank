@@ -218,14 +218,16 @@ if 1==2: #Inference
 else: #Train/Eval
 	#prepare data
 	emb_cache = {}
-	#dataset = multihop_qa_prepare_data() #2.2k
-	dataset =  msmarco_prepare_data(2) #test[:2k] for train, validation[:100] for test
+	dataset = multihop_qa_prepare_data() #2.2k
+	dataset += msmarco_prepare_data(1) #2k
+	dataset += financebench_prepare_data("3M_2018_10K") 
+	dataset += financebench_prepare_data("ADOBE_2015_10K")
 	make_embeddings(dataset)	
 	d = dataset_to_dict(dataset)
 	del dataset
 	mydataset = Dataset.from_dict(d)
 	del d
-	mydataset = mydataset.train_test_split(test_size=0.5, seed=42) #0.01
+	mydataset = mydataset.train_test_split(test_size=0.01, seed=42) #0.01
 	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
 	#endOf prepare data
 	
@@ -265,9 +267,9 @@ else: #Train/Eval
 		eval_dataset=val_dataset,
 		#tokenizer=processor.feature_extractor,
 	)
-	#trainer.train()
+	trainer.train()
 	
 	#evaluate
-	trainer._load_from_checkpoint("./model_temp/checkpoint-8500")
-	trainer.evaluate()
+	#trainer._load_from_checkpoint("./model_temp/checkpoint-8500")
+	#trainer.evaluate()
 

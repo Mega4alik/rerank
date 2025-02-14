@@ -105,7 +105,7 @@ def multihop_qa_prepare_data():
 
 
 def msmarco_prepare_data(mode): #1-train, 2-test
-	dataset = load_dataset("microsoft/ms_marco", 'v1.1', split="test" if mode==1 else "validation") #features: ['answers', 'passages', 'query', 'query_id', 'query_type', 'wellFormedAnswers'],  num_rows: 9650	
+	dataset = load_dataset("microsoft/ms_marco", 'v1.1', split="train" if mode==1 else "validation") #features: ['answers', 'passages', 'query', 'query_id', 'query_type', 'wellFormedAnswers'],  num_rows: 9650	
 	datasize, dataset2 = (2000 if mode==1 else 100), []
 	dataset = dataset.to_pandas()
 	for i in range(datasize):
@@ -135,12 +135,13 @@ def msmarco_prepare_data(mode): #1-train, 2-test
 
 
 
-def financebench_prepare_data():
-	arr = json.loads(file_get_contents("./data/financebench_3M_2018_10K.json"))	
-	datasize, dataset, chunks_list_all = len(arr), [], []
-	for i in range(511): chunks_list_all.append( [ arr[i]['content'] ] )
+def financebench_prepare_data(dataname):
+	arr = json.loads(file_get_contents("./data/financebench_"+dataname+".json"))	
+	datasize, dataset, chunks_list_all = min(511, len(arr)), [], []
+	
+	for i in range(datasize): chunks_list_all.append( [ arr[i]['content'] ] )
 
-	for x in arr[:100]: #idx, content, keywords, questions
+	for x in arr[:datasize]: #idx, content, keywords, questions
 		if not "questions" in x: continue
 		for question in x["questions"]:
 			chunks_list = chunks_list_all.copy()
