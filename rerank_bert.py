@@ -11,10 +11,11 @@ from torch.nn.utils.rnn import pad_sequence
 from datasets import Dataset
 from typing import Any, Dict, List, Optional, Union
 from transformers import Trainer, TrainingArguments, AutoTokenizer, AutoModel
-from utils import file_get_contents, file_put_contents, pickle_load, pickle_save
+from utils import file_get_contents, file_put_contents, pickle_load, pickle_save, cosine_similarity
 from data_loader import multihop_qa_prepare_data, msmarco_prepare_data, financebench_prepare_data
 
-COHERE_EVAL = False #whether we are evaluationg cohere rerank now
+COHERE_EVAL = True #whether we are evaluationg cohere rerank now
+RAW_EMBEDDINGS_EVAL = False
 
 def hashf(st):
 	if len(st) < 120: return st
@@ -48,7 +49,7 @@ def make_embeddings(dataset):
 def dataset_to_dict(dataset):	
 	d = {}
 	for (question, chunks_list, labels_list) in dataset:
-		for o in [ ("question", question), ("chunks_list", chunks_list), ("labels_list", labels_list), ]: #("urls_list", urls_list), ("question_emb", question_emb), ("chunks_emb", chunks_emb) 
+		for o in [ ("question", question), ("chunks_list", chunks_list), ("labels_list", labels_list), ]:
 			k, v = o[0], o[1]
 			if k not in d: d[k] = []
 			d[k].append(v)
@@ -63,8 +64,8 @@ class DataCollator:
 		return list(a_shuffled), list(b_shuffled)
 	
 
-	def __call__(self, features) -> Dict[str, torch.Tensor]:		
-		batch = {"input_values": [], "labels":[]} #, "chunks_list":[], "labels_list":[], "question":[] -- COHERE
+	def __call__(self, features) -> Dict[str, torch.Tensor]:
+		batch = {"input_values": [], "labels":[], "chunks_list":[], "labels_list":[], "question":[]} #
 		for x in features:
 			question, labels_list, chunks_list = x["question"], x["labels_list"], x["chunks_list"]
 			question_emb, chunks_emb = emb_cache[hashf(question)], []
@@ -142,6 +143,7 @@ class OwnTrainer(Trainer):
 		preds, lables = None, None
 		eval_dataloader = self.get_eval_dataloader(eval_dataset)
 		for step, inputs in enumerate(eval_dataloader):
+			if RAW_EMBEDDINGS_EVAL: return test_raw_embeddings(inputs["input_values"], inputs["labels"])
 			if COHERE_EVAL: return cohere_rerank(inputs["question"], inputs["chunks_list"], inputs["labels_list"])
 			with torch.no_grad():
 				pred = self.model.generate(inputs['input_values']) #B,S				
@@ -182,6 +184,22 @@ def compute_metrics(x):
 	return {"eval_accuracy": (correct / n) }
 
 
+#========== raw embeddings =======================
+def test_raw_embeddings(batch_input_values, batch_labels):
+	correct, n = 0, 0
+	for i in range(len(batch_labels)):
+		input_values, labels = batch_input_values[i], batch_labels[i]
+		labels_ones = torch.nonzero(labels == 1).squeeze(-1).detach().tolist()
+		qe, a = input_values[0].detach().cpu(), []
+		for j in range(1, len(input_values)): a.append((j, cosine_similarity(qe, input_values[j].detach().cpu())))
+		a = sorted(a, key=lambda x: x[1], reverse=True)
+		top_indices = [x[0] for x in a[:5]]
+		for lidx in labels_ones:
+			if lidx in top_indices: correct+=1
+			n+=1
+		print(labels_ones, top_indices, correct, n)
+#========== ./endOf raw embeddings =================
+
 #==== cohere ========
 if COHERE_EVAL:
 	from config import COHERE_API_KEY
@@ -196,7 +214,7 @@ if COHERE_EVAL:
 			for a in labels_list: labels+=a
 			print("docs, labels lengths:", len(documents), len(labels))
 			labels_ones = torch.nonzero(torch.tensor(labels) == 1).squeeze(-1).detach().tolist()
-			documents_reranked = co.rerank(model="rerank-v3.5", query=question, documents=documents, top_n=10)
+			documents_reranked = co.rerank(model="rerank-v3.5", query=question, documents=documents, top_n=5)
 			top_indices = [r.index for r in documents_reranked.results]
 			for lidx in labels_ones:
 				if lidx in top_indices: correct+=1
@@ -218,16 +236,20 @@ if 1==2: #Inference
 else: #Train/Eval
 	#prepare data
 	emb_cache = {}
+	""" #train
 	dataset = multihop_qa_prepare_data() #2.2k
 	dataset += msmarco_prepare_data(1) #2k
 	dataset += financebench_prepare_data("3M_2018_10K") 
 	dataset += financebench_prepare_data("ADOBE_2015_10K")
+	"""	
+	dataset = financebench_prepare_data("AMAZON_2015_10K") #msmarco_prepare_data(2) #
+
 	make_embeddings(dataset)	
 	d = dataset_to_dict(dataset)
 	del dataset
 	mydataset = Dataset.from_dict(d)
 	del d
-	mydataset = mydataset.train_test_split(test_size=0.01, seed=42) #0.01
+	mydataset = mydataset.train_test_split(test_size=0.5, seed=42) #0.01
 	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
 	#endOf prepare data
 	
@@ -267,9 +289,9 @@ else: #Train/Eval
 		eval_dataset=val_dataset,
 		#tokenizer=processor.feature_extractor,
 	)
-	trainer.train()
+	#trainer.train()
 	
 	#evaluate
-	#trainer._load_from_checkpoint("./model_temp/checkpoint-8500")
-	#trainer.evaluate()
+	trainer._load_from_checkpoint("./model_temp/checkpoint-29000")
+	trainer.evaluate()
 

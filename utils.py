@@ -9,6 +9,7 @@ import re
 import json
 import pickle
 import numpy as np
+from scipy import spatial
 from config import OPENAI_API_KEY
 
 
@@ -40,3 +41,10 @@ def pickle_load(path):
         obj = pickle.load(file)
         return obj
 
+def cosine_similarity(v1, v2):
+  return 1 - spatial.distance.cosine(v1, v2)
+
+
+
+
+                   
