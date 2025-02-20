@@ -14,7 +14,7 @@ from transformers import Trainer, TrainingArguments, AutoTokenizer, AutoModel
 from utils import file_get_contents, file_put_contents, pickle_load, pickle_save, cosine_similarity
 from data_loader import multihop_qa_prepare_data, msmarco_prepare_data, financebench_prepare_data
 
-COHERE_EVAL = True #whether we are evaluationg cohere rerank now
+COHERE_EVAL = False #whether we are evaluationg cohere rerank now
 RAW_EMBEDDINGS_EVAL = False
 
 def hashf(st):
@@ -65,7 +65,7 @@ class DataCollator:
 	
 
 	def __call__(self, features) -> Dict[str, torch.Tensor]:
-		batch = {"input_values": [], "labels":[], "chunks_list":[], "labels_list":[], "question":[]} #
+		batch = {"input_values": [], "labels":[]} #, "chunks_list":[], "labels_list":[], "question":[]
 		for x in features:
 			question, labels_list, chunks_list = x["question"], x["labels_list"], x["chunks_list"]
 			question_emb, chunks_emb = emb_cache[hashf(question)], []
@@ -94,7 +94,7 @@ class DataCollator:
 class MyModel(nn.Module):
 	def __init__(self):
 		super().__init__()
-		self.bert_hidden_dim = 768 #bert emb dim
+		self.bert_hidden_dim = 1024 #bert emb dim: 768-small, 1024-large
 		self.embedding_dim = 1024 #jina emb dim
 		self.llm_model = llm_model
 		self.fc1 = nn.Linear(self.embedding_dim, self.bert_hidden_dim)
@@ -226,8 +226,8 @@ if COHERE_EVAL:
 
 ###################### __main__ ###########################
 gpu, device = True, torch.device("cuda")
-llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
-llm_model = AutoModel.from_pretrained("google-bert/bert-base-uncased")
+llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-large-uncased")
+llm_model = AutoModel.from_pretrained("google-bert/bert-large-uncased")
 mymodel = None
 
 if 1==2: #Inference
@@ -236,20 +236,20 @@ if 1==2: #Inference
 else: #Train/Eval
 	#prepare data
 	emb_cache = {}
-	""" #train
+	#train
 	dataset = multihop_qa_prepare_data() #2.2k
 	dataset += msmarco_prepare_data(1) #2k
 	dataset += financebench_prepare_data("3M_2018_10K") 
 	dataset += financebench_prepare_data("ADOBE_2015_10K")
-	"""	
-	dataset = financebench_prepare_data("AMAZON_2015_10K") #msmarco_prepare_data(2) #
+
+	#dataset = financebench_prepare_data("AMAZON_2015_10K") #msmarco_prepare_data(2) #
 
 	make_embeddings(dataset)	
 	d = dataset_to_dict(dataset)
 	del dataset
 	mydataset = Dataset.from_dict(d)
 	del d
-	mydataset = mydataset.train_test_split(test_size=0.5, seed=42) #0.01
+	mydataset = mydataset.train_test_split(test_size=0.01, seed=42) #0.01
 	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
 	#endOf prepare data
 	
@@ -259,8 +259,8 @@ else: #Train/Eval
 	training_args = TrainingArguments(
 	  output_dir="./model_temp/",
 	  #group_by_length=True, length_column_name="len",
-	  per_device_train_batch_size=16,
-	  gradient_accumulation_steps=1, #update each 2 * batch_size
+	  per_device_train_batch_size=2, #16-bert-base US1, 
+	  gradient_accumulation_steps=3, #update each 2 * batch_size
 	  #fp16=True,
 	  evaluation_strategy="steps",
 	  num_train_epochs=100,
@@ -272,7 +272,7 @@ else: #Train/Eval
 	  dataloader_num_workers=4,
 	  weight_decay=0.005,
 	  warmup_steps=1000,
-	  save_total_limit=3,
+	  save_total_limit=2,
 	  ignore_data_skip=True,
 	  remove_unused_columns=False,
 	  #label_names=["labels"], #attempt to solve eval problem
@@ -289,9 +289,9 @@ else: #Train/Eval
 		eval_dataset=val_dataset,
 		#tokenizer=processor.feature_extractor,
 	)
-	#trainer.train()
+	trainer.train("./model_temp/checkpoint-48500")
 	
 	#evaluate
-	trainer._load_from_checkpoint("./model_temp/checkpoint-29000")
-	trainer.evaluate()
+	#trainer._load_from_checkpoint("./model_temp/checkpoint-48500")
+	#trainer.evaluate()
 
