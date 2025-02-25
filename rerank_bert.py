@@ -236,20 +236,21 @@ if 1==2: #Inference
 else: #Train/Eval
 	#prepare data
 	emb_cache = {}
-	#train
+	""" #train 
 	dataset = multihop_qa_prepare_data() #2.2k
 	dataset += msmarco_prepare_data(1) #2k
 	dataset += financebench_prepare_data("3M_2018_10K") 
 	dataset += financebench_prepare_data("ADOBE_2015_10K")
+	"""
 	
-	#dataset = financebench_prepare_data("AMAZON_2015_10K") #msmarco_prepare_data(2) #
+	dataset = financebench_prepare_data("AMAZON_2015_10K") #msmarco_prepare_data(2) #
 
 	make_embeddings(dataset)	
 	d = dataset_to_dict(dataset)
 	del dataset
 	mydataset = Dataset.from_dict(d)
 	del d
-	mydataset = mydataset.train_test_split(test_size=0.01, seed=42) #0.01 | 0.5
+	mydataset = mydataset.train_test_split(test_size=0.5, seed=42) #0.01 | 0.5
 	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
 	#endOf prepare data
 	
@@ -259,7 +260,7 @@ else: #Train/Eval
 	training_args = TrainingArguments(
 	  output_dir="./model_temp/",
 	  #group_by_length=True, length_column_name="len",
-	  per_device_train_batch_size=16, #16-bert-base US1, 
+	  per_device_train_batch_size=8, #16-bert-base US1, 
 	  gradient_accumulation_steps=1, #update each 2 * batch_size
 	  #fp16=True,
 	  evaluation_strategy="steps",
@@ -289,9 +290,9 @@ else: #Train/Eval
 		eval_dataset=val_dataset,
 		#tokenizer=processor.feature_extractor,
 	)
-	trainer.train()
+	#trainer.train()
 	
 	#evaluate
-	#trainer._load_from_checkpoint("./model_temp/checkpoint-11500")
-	#trainer.evaluate()
+	trainer._load_from_checkpoint("./model_temp/checkpoint-52500")
+	trainer.evaluate()
 
