@@ -94,7 +94,7 @@ class DataCollator:
 class MyModel(nn.Module):
 	def __init__(self):
 		super().__init__()
-		self.bert_hidden_dim = 768 #bert emb dim: 768-small, 1024-large
+		self.bert_hidden_dim = 1024 #bert emb dim: 768-small, 1024-large
 		self.embedding_dim = 1024 #jina emb dim
 		self.llm_model = llm_model
 		self.fc1 = nn.Linear(self.embedding_dim, self.bert_hidden_dim)
@@ -226,8 +226,8 @@ if COHERE_EVAL:
 
 ###################### __main__ ###########################
 gpu, device = True, torch.device("cuda")
-llm_tokenizer = AutoTokenizer.from_pretrained("answerdotai/ModernBERT-base")
-llm_model = AutoModel.from_pretrained("answerdotai/ModernBERT-base")
+llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-large-uncased")
+llm_model = AutoModel.from_pretrained("google-bert/bert-large-uncased")
 mymodel = None
 
 if 1==2: #Inference
@@ -293,6 +293,6 @@ else: #Train/Eval
 	#trainer.train()
 	
 	#evaluate
-	trainer._load_from_checkpoint("./model_temp/checkpoint-52500")
+	trainer._load_from_checkpoint("./model_temp/rerank4_checkpoint-11500_18-23")
 	trainer.evaluate()
 
