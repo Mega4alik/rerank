@@ -94,15 +94,23 @@ class DataCollator:
 class MyModel(nn.Module):
 	def __init__(self):
 		super().__init__()
-		self.bert_hidden_dim = 1024 #bert emb dim: 768-small, 1024-large
+		self.bert_hidden_dim = 768 #bert emb dim: 768-base, 1024-large
 		self.embedding_dim = 1024 #jina emb dim
 		self.llm_model = llm_model
+		self.wpe = nn.Embedding(512, self.bert_hidden_dim) #max_sequence_length_of_bert=512
 		self.fc1 = nn.Linear(self.embedding_dim, self.bert_hidden_dim)
 		self.fc2 = nn.Linear(self.bert_hidden_dim, 1)
 
+
 	def trans(self, a):
+		position_ids = torch.arange(0, a.size(1), dtype=torch.long, device=device) #[0,1,2,..T]
+		#pos_emb = self.wpe(position_ids) #T, embedding_dim
+		pos_emb = self.llm_model.embeddings.position_embeddings(position_ids)
+		#print(a.shape, pos_emb.shape, a[0][0], pos_emb[0], "\na:", a.mean(dim=(1,2)),  a.var(dim=(1,2)), "\npos:",  pos_emb.mean(), pos_emb.var())
 		x = self.fc1(a)
+		x = x + pos_emb #B,T,C + T,C (will add up to each batch)
 		return x
+
 
 	def forward(self,
 		input_values: Optional[torch.Tensor],
@@ -133,6 +141,7 @@ class MyModel(nn.Module):
 	def _load_from_checkpoint(self, load_directory):
 		load_path = os.path.join(load_directory, 'state_dict.pt')
 		checkpoint = torch.load(load_path)
+		self.wpe.load_state_dict(checkpoint['wpe_state_dict'])
 		self.fc1.load_state_dict(checkpoint['fc1_state_dict'])
 		self.fc2.load_state_dict(checkpoint['fc2_state_dict'])
 		self.llm_model.load_state_dict(checkpoint['llm_state_dict'])
@@ -146,7 +155,7 @@ class OwnTrainer(Trainer):
 			if RAW_EMBEDDINGS_EVAL: return test_raw_embeddings(inputs["input_values"], inputs["labels"])
 			if COHERE_EVAL: return cohere_rerank(inputs["question"], inputs["chunks_list"], inputs["labels_list"])
 			with torch.no_grad():
-				pred = self.model.generate(inputs['input_values']) #B,S				
+				pred = self.model.generate(inputs['input_values']) #B,S
 			return compute_metrics({"predictions":pred, "labels":inputs['labels']})	
 			
 
@@ -155,6 +164,7 @@ class OwnTrainer(Trainer):
 		os.makedirs(save_directory, exist_ok=True)		
 		save_path = os.path.join(save_directory, 'state_dict.pt')
 		torch.save({
+			'wpe_state_dict': model.wpe.state_dict(),
 			'fc1_state_dict': model.fc1.state_dict(),
 			'fc2_state_dict': model.fc2.state_dict(),
 			'llm_state_dict': model.llm_model.state_dict()
@@ -226,8 +236,8 @@ if COHERE_EVAL:
 
 ###################### __main__ ###########################
 gpu, device = True, torch.device("cuda")
-llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-large-uncased")
-llm_model = AutoModel.from_pretrained("google-bert/bert-large-uncased")
+llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")  #bert-large-uncased
+llm_model = AutoModel.from_pretrained("google-bert/bert-base-uncased")
 mymodel = None
 
 if 1==2: #Inference
@@ -236,21 +246,20 @@ if 1==2: #Inference
 else: #Train/Eval
 	#prepare data
 	emb_cache = {}
-	""" #train 
+	#train
 	dataset = multihop_qa_prepare_data() #2.2k
-	dataset += msmarco_prepare_data(1) #2k
-	dataset += financebench_prepare_data("3M_2018_10K") 
-	dataset += financebench_prepare_data("ADOBE_2015_10K")
-	"""
+	#dataset += msmarco_prepare_data(1) #2k
+	#ataset += financebench_prepare_data("3M_2018_10K")
+	#dataset += financebench_prepare_data("ADOBE_2015_10K")
 	
-	dataset = financebench_prepare_data("AMAZON_2015_10K") #msmarco_prepare_data(2) #
+	#dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2) #Eval
 
 	make_embeddings(dataset)	
 	d = dataset_to_dict(dataset)
 	del dataset
 	mydataset = Dataset.from_dict(d)
 	del d
-	mydataset = mydataset.train_test_split(test_size=0.5, seed=42) #0.01 | 0.5
+	mydataset = mydataset.train_test_split(test_size=0.01, seed=42) #0.01 | 0.5
 	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
 	#endOf prepare data
 	
@@ -260,9 +269,9 @@ else: #Train/Eval
 	training_args = TrainingArguments(
 	  output_dir="./model_temp/",
 	  #group_by_length=True, length_column_name="len",
-	  per_device_train_batch_size=8, #16-bert-base US1, 
+	  per_device_train_batch_size=16, #16 - bert-base US1,
 	  gradient_accumulation_steps=1, #update each 2 * batch_size
-	  #fp16=True,
+	  fp16=False,
 	  evaluation_strategy="steps",
 	  num_train_epochs=100,
 	  logging_steps=50,
@@ -290,9 +299,9 @@ else: #Train/Eval
 		eval_dataset=val_dataset,
 		#tokenizer=processor.feature_extractor,
 	)
-	#trainer.train()
+	trainer.train("./model_temp/checkpoint-12500/")
 	
 	#evaluate
-	trainer._load_from_checkpoint("./model_temp/rerank4_checkpoint-11500_18-23")
-	trainer.evaluate()
+	#trainer._load_from_checkpoint("./model_temp/rerank4_checkpoint-11500_18-23")
+	#trainer.evaluate()
 
