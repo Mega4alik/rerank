@@ -248,9 +248,9 @@ else: #Train/Eval
 	emb_cache = {}
 	#train
 	dataset = multihop_qa_prepare_data() #2.2k
-	#dataset += msmarco_prepare_data(1) #2k
-	#ataset += financebench_prepare_data("3M_2018_10K")
-	#dataset += financebench_prepare_data("ADOBE_2015_10K")
+	dataset += msmarco_prepare_data(1) #2k
+	dataset += financebench_prepare_data("3M_2018_10K")
+	dataset += financebench_prepare_data("ADOBE_2015_10K")
 	
 	#dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2) #Eval
 
@@ -273,7 +273,7 @@ else: #Train/Eval
 	  gradient_accumulation_steps=1, #update each 2 * batch_size
 	  fp16=False,
 	  evaluation_strategy="steps",
-	  num_train_epochs=100,
+	  num_train_epochs=200,
 	  logging_steps=50,
 	  save_steps=500,
 	  eval_steps=500,
@@ -299,9 +299,9 @@ else: #Train/Eval
 		eval_dataset=val_dataset,
 		#tokenizer=processor.feature_extractor,
 	)
-	trainer.train("./model_temp/checkpoint-12500/")
+	trainer.train()
 	
 	#evaluate
-	#trainer._load_from_checkpoint("./model_temp/rerank4_checkpoint-11500_18-23")
+	#trainer._load_from_checkpoint("./model_temp/checkpoint-14000")
 	#trainer.evaluate()
 
