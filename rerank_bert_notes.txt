@@ -1,0 +1,33 @@
+#rerank1. chunk_size=200, bert-base-uncased
+train_size = 2232, test_size = 23
+58 / 61 == 0.950819672 on checkpoint-11500
+
+#cohere multilingual 39/61 = 
+#cohere rerank-v3.5 49/61 = 0.80327
+
+#rerank2 chunk_size=200 bert-base-uncased
+  train_size = 2232 multihop_qa + msmarco.test[:2000], 
+  test on msmarco.validation[:100] = 25/25 top 10, 
+  test financebench_3M_2018_10K gives 6/21 top 10
+
+#rerank3
+train =  multihop_qa, msmarco.train[:2000],  financebench.3M_2018_10K, financebench.ADOBE_2015_10K
+test checkpoint-29000: financebench.AMAZON_2015_10K = 16 / 23, msmarco.valid[:100] = 25 / 25
+test cohere: financebench.AMAZON_2015_10K = 22/23 top 10 and 19/23 top 5, msmarco.valid[:100] = 25/25
+
+
+#rerank4
+  as rerank3, trained on PC1, BERT-large-uncased 
+  test checkpoint-29000: financebench.AMAZON_2015_10K = 18/23 on top 10, 13/23 on top 5
+  raw embeddings: financebench.AMAZON_2015_10K = 16/23 on top 5 and 19/23 on top 10
+
+#rerank5
+  answerdotai/ModernBERT-base gives financebench.AMAZON_2015_10K 9/23
+
+
+#temp.Apr 29. model trained using positional encoder on only multihop_qa_prepare_data gives 5/23 accuracy
+
+
+#rerank6
+  bert-base-uncased. x = fc1(jina_emb) + bert_base_uncased.embeddings.position_embeddings(pos_ids)
+  test checkpoint-39000: financebench.AMAZON_2015_10K = 15/23 on top 10, 9/23 on top 5

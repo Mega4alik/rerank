@@ -62,24 +62,27 @@ class DataCollator:
 		random.shuffle(combined)  # Shuffle the pairs
 		a_shuffled, b_shuffled = zip(*combined)  # Unzip after shuffling
 		return list(a_shuffled), list(b_shuffled)
-	
 
 	def __call__(self, features) -> Dict[str, torch.Tensor]:
-		batch = {"input_values": [], "labels":[]} #, "chunks_list":[], "labels_list":[], "question":[]
+		batch = {"input_values": [], "labels":[], "position_ids":[]} #, "chunks_list":[], "labels_list":[], "question":[]
 		for x in features:
 			question, labels_list, chunks_list = x["question"], x["labels_list"], x["chunks_list"]
 			question_emb, chunks_emb = emb_cache[hashf(question)], []
 			for chunks in chunks_list:
 				chunks_emb.append( [emb_cache[hashf(chunk)] for chunk in chunks] )
 			if not COHERE_EVAL: chunks_emb, labels_list = self.shuffle_lists(chunks_emb, labels_list)
-			input_values, labels = [question_emb], [0] #input value: list of embeddings(list), labels: list of 0/1
+			
+			input_values, labels, position_ids = [question_emb], [0], [0] #input value: list of embeddings(list), labels: list of 0/1
 			for i, embs in enumerate(chunks_emb):
-				for emb in embs: input_values.append(emb)
+				for idx, emb in enumerate(embs):
+					input_values.append(emb)
+					position_ids.append(idx+1)
 				labels += labels_list[i] #seq
 
-			input_values, labels = torch.tensor(input_values), torch.tensor(labels) #,  dtype=torch.int32
+			input_values, labels, position_ids = torch.tensor(input_values), torch.tensor(labels), torch.tensor(position_ids, dtype=torch.long)  #dtype=torch.int32
 			batch["input_values"].append(input_values)
 			batch["labels"].append(labels)
+			batch["position_ids"].append(position_ids)
 			if COHERE_EVAL:
 				batch["chunks_list"].append(chunks_list) #temp for cohere
 				batch["labels_list"].append(labels_list) #temp for cohere
@@ -87,6 +90,7 @@ class DataCollator:
 
 		batch["input_values"] = pad_sequence(batch["input_values"], batch_first=True, padding_value=0) #B,S,C
 		batch["labels"] = pad_sequence(batch["labels"], batch_first=True, padding_value=0) #B,S -100
+		batch["position_ids"] = pad_sequence(batch["position_ids"], batch_first=True, padding_value=0)
 		#print("batch shapes:", batch["input_values"].shape, batch["labels"].shape)
 		return batch
 
@@ -102,16 +106,19 @@ class MyModel(nn.Module):
 		self.fc2 = nn.Linear(self.bert_hidden_dim, 1)
 
 
-	def trans(self, a):
+	def trans(self, a, position_ids):
 		B,T,C = a.size()
-		position_ids = torch.arange(0, T, dtype=torch.long, device=device) #[0,1,2,..T]		
+		#position_ids = torch.arange(0, T, dtype=torch.long, device=device) #[0,1,2,..T]
 		#pos_emb = self.wpe(position_ids) #T, embedding_dim
 		pos_emb = self.llm_model.embeddings.position_embeddings(position_ids)
-		#token_type_ids = torch.zeros(B, T, dtype=torch.long, device=device) #0 or 1
-		#segment_emb = self.llm_model.embeddings.token_type_embeddings(token_type_ids)
+
+		token_type_ids = np.ones((B,T))
+		token_type_ids[:,0] = 0
+		token_type_ids = torch.tensor(token_type_ids, dtype=torch.long, device=device) #0 or 1
+		segment_emb = self.llm_model.embeddings.token_type_embeddings(token_type_ids)
 		#print(a.shape, segment_emb.shape, a[0][0], segment_emb[0], "\na:", a.mean(dim=(1,2)),  a.var(dim=(1,2)), "\npos:",  segment_emb.mean(), segment_emb.var())		
 		x = self.fc1(a)
-		x = x + pos_emb #B,T,C + T,C (will add up to each batch)
+		x = x + pos_emb + segment_emb #B,T,C + T,C (will add up to each batch)
 		return x
 
 
@@ -122,9 +129,9 @@ class MyModel(nn.Module):
 		output_hidden_states: Optional[bool] = None,
 		return_dict: Optional[bool] = None,
 		labels: Optional[torch.Tensor] = None,
-		#target_lengths: Optional = None
+		position_ids: Optional[torch.Tensor] = None
 	):
-		out = self.llm_model(inputs_embeds=self.trans(input_values), output_hidden_states=True)
+		out = self.llm_model(inputs_embeds=self.trans(input_values, position_ids), output_hidden_states=True)
 		pred = self.fc2(out.hidden_states[-1]).squeeze(-1) #B, S
 		pred = torch.sigmoid(pred) #0..1
 
@@ -136,8 +143,8 @@ class MyModel(nn.Module):
 			return {"loss":loss}
 
 
-	def generate(self, x): #x-processed speech array
-		pred = self.forward(input_values=x)
+	def generate(self, x, position_ids): #x-processed speech array
+		pred = self.forward(input_values=x, position_ids=position_ids)
 		return pred
 
 	
@@ -158,7 +165,7 @@ class OwnTrainer(Trainer):
 			if RAW_EMBEDDINGS_EVAL: return test_raw_embeddings(inputs["input_values"], inputs["labels"])
 			if COHERE_EVAL: return cohere_rerank(inputs["question"], inputs["chunks_list"], inputs["labels_list"])
 			with torch.no_grad():
-				pred = self.model.generate(inputs['input_values']) #B,S
+				pred = self.model.generate(inputs['input_values'], inputs['position_ids']) #B,S
 			return compute_metrics({"predictions":pred, "labels":inputs['labels']})	
 			
 
@@ -243,7 +250,7 @@ llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")  
 llm_model = AutoModel.from_pretrained("google-bert/bert-base-uncased")
 mymodel = None
 
-mode = 2 #1-train, 2-test, 3-inference
+mode = 1 #1-train, 2-test, 3-inference
 
 if mode==3: #Inference
 	tester = MyTester()
@@ -251,7 +258,7 @@ if mode==3: #Inference
 else: #Train/Test
 	#prepare data
 	emb_cache = {}
-	if mode==1: #train	
+	if mode==1: #train
 		dataset = multihop_qa_prepare_data() #2.2k
 		dataset += msmarco_prepare_data(1) #2k
 		dataset += financebench_prepare_data("3M_2018_10K")
@@ -307,6 +314,6 @@ else: #Train/Test
 	if mode==1:
 		trainer.train()
 	elif mode==2: #evaluate
-		trainer._load_from_checkpoint("./model_temp/checkpoint-39000")
+		trainer._load_from_checkpoint("./model_temp/checkpoint-19500")
 		trainer.evaluate()
 
