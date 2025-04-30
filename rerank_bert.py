@@ -103,10 +103,13 @@ class MyModel(nn.Module):
 
 
 	def trans(self, a):
-		position_ids = torch.arange(0, a.size(1), dtype=torch.long, device=device) #[0,1,2,..T]
+		B,T,C = a.size()
+		position_ids = torch.arange(0, T, dtype=torch.long, device=device) #[0,1,2,..T]		
 		#pos_emb = self.wpe(position_ids) #T, embedding_dim
 		pos_emb = self.llm_model.embeddings.position_embeddings(position_ids)
-		#print(a.shape, pos_emb.shape, a[0][0], pos_emb[0], "\na:", a.mean(dim=(1,2)),  a.var(dim=(1,2)), "\npos:",  pos_emb.mean(), pos_emb.var())
+		#token_type_ids = torch.zeros(B, T, dtype=torch.long, device=device) #0 or 1
+		#segment_emb = self.llm_model.embeddings.token_type_embeddings(token_type_ids)
+		#print(a.shape, segment_emb.shape, a[0][0], segment_emb[0], "\na:", a.mean(dim=(1,2)),  a.var(dim=(1,2)), "\npos:",  segment_emb.mean(), segment_emb.var())		
 		x = self.fc1(a)
 		x = x + pos_emb #B,T,C + T,C (will add up to each batch)
 		return x
@@ -240,26 +243,28 @@ llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")  
 llm_model = AutoModel.from_pretrained("google-bert/bert-base-uncased")
 mymodel = None
 
-if 1==2: #Inference
+mode = 2 #1-train, 2-test, 3-inference
+
+if mode==3: #Inference
 	tester = MyTester()
 	#tester.T248_evaluate()
-else: #Train/Eval
+else: #Train/Test
 	#prepare data
 	emb_cache = {}
-	#train
-	dataset = multihop_qa_prepare_data() #2.2k
-	dataset += msmarco_prepare_data(1) #2k
-	dataset += financebench_prepare_data("3M_2018_10K")
-	dataset += financebench_prepare_data("ADOBE_2015_10K")
-	
-	#dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2) #Eval
+	if mode==1: #train	
+		dataset = multihop_qa_prepare_data() #2.2k
+		dataset += msmarco_prepare_data(1) #2k
+		dataset += financebench_prepare_data("3M_2018_10K")
+		dataset += financebench_prepare_data("ADOBE_2015_10K")
+	else: #test
+		dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
 
 	make_embeddings(dataset)	
 	d = dataset_to_dict(dataset)
 	del dataset
 	mydataset = Dataset.from_dict(d)
 	del d
-	mydataset = mydataset.train_test_split(test_size=0.01, seed=42) #0.01 | 0.5
+	mydataset = mydataset.train_test_split(test_size=0.01 if mode==1 else 0.5, seed=42) #0.01 | 0.5
 	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
 	#endOf prepare data
 	
@@ -299,9 +304,9 @@ else: #Train/Eval
 		eval_dataset=val_dataset,
 		#tokenizer=processor.feature_extractor,
 	)
-	trainer.train()
-	
-	#evaluate
-	#trainer._load_from_checkpoint("./model_temp/checkpoint-14000")
-	#trainer.evaluate()
+	if mode==1:
+		trainer.train()
+	elif mode==2: #evaluate
+		trainer._load_from_checkpoint("./model_temp/checkpoint-39000")
+		trainer.evaluate()
 
