@@ -31,3 +31,5 @@ test cohere: financebench.AMAZON_2015_10K = 22/23 top 10 and 19/23 top 5, msmarc
 #rerank6
   bert-base-uncased. x = fc1(jina_emb) + bert_base_uncased.embeddings.position_embeddings(pos_ids)
   test checkpoint-39000: financebench.AMAZON_2015_10K = 15/23 on top 10, 9/23 on top 5
+
+#model7.

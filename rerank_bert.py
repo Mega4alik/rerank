@@ -250,7 +250,7 @@ llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")  
 llm_model = AutoModel.from_pretrained("google-bert/bert-base-uncased")
 mymodel = None
 
-mode = 1 #1-train, 2-test, 3-inference
+mode = 2 #1-train, 2-test, 3-inference
 
 if mode==3: #Inference
 	tester = MyTester()
