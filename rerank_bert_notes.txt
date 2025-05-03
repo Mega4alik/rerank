@@ -17,19 +17,32 @@ test cohere: financebench.AMAZON_2015_10K = 22/23 top 10 and 19/23 top 5, msmarc
 
 
 #rerank4
-  as rerank3, trained on PC1, BERT-large-uncased 
+  as rerank3, trained on PC1, BERT-large-uncased
   test checkpoint-29000: financebench.AMAZON_2015_10K = 18/23 on top 10, 13/23 on top 5
   raw embeddings: financebench.AMAZON_2015_10K = 16/23 on top 5 and 19/23 on top 10
 
 #rerank5
   answerdotai/ModernBERT-base gives financebench.AMAZON_2015_10K 9/23
 
-
 #temp.Apr 29. model trained using positional encoder on only multihop_qa_prepare_data gives 5/23 accuracy
-
 
 #rerank6
   bert-base-uncased. x = fc1(jina_emb) + bert_base_uncased.embeddings.position_embeddings(pos_ids)
   test checkpoint-39000: financebench.AMAZON_2015_10K = 15/23 on top 10, 9/23 on top 5
 
-#model7.
+#rerank7
+  x = fc1(jina_emb) + embeddings.position_embeddings(position_ids) + segment_emb  with custom position_ids.append(idx+1) -- [0,1,2,3,1,2...]
+  performed poorly like 7/23
+
+
+#rerank8
+  x = fc1(jina_emb) + embeddings.position_embeddings(position_ids)  with custom position_ids.append(idx) -- [0,0,1,2,0,1...]
+  performed poorly like 2/23
+
+
+#rerank9
+  bert-base-uncased, x = fc1(ln1(jina_emb)) + segment_emb  where segment_emb is [0,1,1,1,1....]. best val 60/62
+  test financebench.AMAZON_2015_10K = 15/23 on top 10
+
+
+
