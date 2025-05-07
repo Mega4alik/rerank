@@ -8,11 +8,11 @@ import torch
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 #from torch.utils.data import Dataset, DataLoader
-from datasets import Dataset
+from datasets import Dataset, load_from_disk, concatenate_datasets
 from typing import Any, Dict, List, Optional, Union
 from transformers import Trainer, TrainingArguments, AutoTokenizer, AutoModel
 from utils import file_get_contents, file_put_contents, pickle_load, pickle_save, cosine_similarity
-from data_loader import multihop_qa_prepare_data, msmarco_prepare_data, financebench_prepare_data
+from data_loader import multihop_qa_prepare_data, msmarco_prepare_data, financebench_prepare_data, hotpotqa_prepare_data
 
 COHERE_EVAL = False #whether we are evaluationg cohere rerank now
 RAW_EMBEDDINGS_EVAL = False
@@ -20,6 +20,7 @@ RAW_EMBEDDINGS_EVAL = False
 def hashf(st):
 	if len(st) < 120: return st
 	else: return st[:50] + "..." + st[-50:]
+
 
 @torch.inference_mode()
 def make_embeddings(dataset):
@@ -37,12 +38,11 @@ def make_embeddings(dataset):
 		print(f"\rEmb: {step}/2555", end="", flush=True)
 		h = hashf(question)
 		if h not in emb_cache: emb_cache[h] = embedding_model.encode([question], task="retrieval.query")[0]
-		for chunks in chunks_list:
+		for chunks in chunks_list:			
 			for chunk in chunks:
 				h = hashf(chunk)
 				if h not in emb_cache: emb_cache[h] = embedding_model.encode([chunk], task="retrieval.passage")[0]
 	
-	#torch.save(emb_cache, path, _use_new_zipfile_serialization=False)
 	pickle_save(path, emb_cache)
 
 
@@ -109,14 +109,14 @@ class MyModel(nn.Module):
 		#position_ids = torch.arange(0, T, dtype=torch.long, device=device) #[0,1,2,..T]
 		#pos_emb = self.llm_model.embeddings.position_embeddings(position_ids)
 
-		token_type_ids = np.ones((B,T))
-		token_type_ids[:,0] = 0
-		token_type_ids = torch.tensor(token_type_ids, dtype=torch.long, device=device) #0 or 1
-		segment_emb = self.llm_model.embeddings.token_type_embeddings(token_type_ids)
+		#token_type_ids = np.ones((B,T))
+		#token_type_ids[:,0] = 0
+		#token_type_ids = torch.tensor(token_type_ids, dtype=torch.long, device=device) #0 or 1
+		#segment_emb = self.llm_model.embeddings.token_type_embeddings(token_type_ids)
 		#print(a.shape, segment_emb.shape, a[0][0], segment_emb[0], "\na:", a.mean(dim=(1,2)),  a.var(dim=(1,2)), "\npos:",  segment_emb.mean(), segment_emb.var())
 
 		x = self.fc1(self.ln1(a))
-		x = x + segment_emb  #+pos_emb
+		#x = x + pos_emb + segment_emb
 		return x
 
 
@@ -191,8 +191,7 @@ def compute_metrics(x):
 	batch_preds, batch_labels = x["predictions"], x["labels"]
 	correct, n = 0, 0	
 	for i in range(len(batch_preds)):
-		probs, labels = batch_preds[i], batch_labels[i]
-		print("compute_metrics:", probs.shape, labels.shape)
+		probs, labels = batch_preds[i], batch_labels[i]		
 		top_indices = torch.topk(probs, 10).indices.detach().tolist()
 		labels_ones = torch.nonzero(labels == 1).squeeze(-1).detach().tolist()
 		for lidx in labels_ones:
@@ -248,28 +247,37 @@ llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")  
 llm_model = AutoModel.from_pretrained("google-bert/bert-base-uncased")
 mymodel = None
 
-mode = 2 #1-train, 2-test, 3-inference
+mode = 1 #1-train, 2-test, 3-inference
 
 if mode==3: #Inference
 	tester = MyTester()
 	#tester.T248_evaluate()
 else: #Train/Test
-	#prepare data
 	emb_cache = {}
-	if mode==1: #train
-		dataset = multihop_qa_prepare_data() #2.2k
-		dataset += msmarco_prepare_data(1) #2k
-		dataset += financebench_prepare_data("3M_2018_10K")
-		dataset += financebench_prepare_data("ADOBE_2015_10K")
-	else: #test
-		dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
-		#dataset = msmarco_prepare_data(2)
+	if mode==1 and 1==1:
+		datasets = [load_from_disk(f"./temp/dataset_{dname}") for dname in ["multihop", "msmarco", "financebench", "hotpotqa"]  ]
+		mydataset = concatenate_datasets(datasets)
+		make_embeddings(None)
+	else:
+		#prepare data
+		if mode==1: #train
+			#dataset = multihop_qa_prepare_data() #2.2k
+			#dataset += msmarco_prepare_data(1) #2k
+			#dataset += financebench_prepare_data("3M_2018_10K")
+			#dataset += financebench_prepare_data("ADOBE_2015_10K")
+			dataset = hotpotqa_prepare_data(1)
+		else: #test
+			dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
+			#dataset = msmarco_prepare_data(2)
+		make_embeddings(dataset)
+		d = dataset_to_dict(dataset)
+		del dataset
+		mydataset = Dataset.from_dict(d)
+		del d
+		#mydataset.save_to_disk("./temp/dataset_msmarco")
+		exit()
+		#./endOf prepare data
 
-	make_embeddings(dataset)	
-	d = dataset_to_dict(dataset)
-	del dataset
-	mydataset = Dataset.from_dict(d)
-	del d
 	mydataset = mydataset.train_test_split(test_size=0.01 if mode==1 else 0.5, seed=42) #0.01 | 0.5
 	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
 	#endOf prepare data
@@ -284,7 +292,7 @@ else: #Train/Test
 	  gradient_accumulation_steps=1, #update each 2 * batch_size
 	  fp16=False,
 	  evaluation_strategy="steps",
-	  num_train_epochs=200,
+	  num_train_epochs=100,
 	  logging_steps=50,
 	  save_steps=500,
 	  eval_steps=500,
@@ -311,7 +319,7 @@ else: #Train/Test
 		#tokenizer=processor.feature_extractor,
 	)
 	if mode==1:
-		trainer.train("./model_temp/checkpoint-7500")
+		trainer.train()
 	elif mode==2: #evaluate
 		trainer._load_from_checkpoint("./model_temp/checkpoint-9500")
 		trainer.evaluate()

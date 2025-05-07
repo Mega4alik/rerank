@@ -149,7 +149,48 @@ def financebench_prepare_data(dataname):
 			labels_list[x["idx"]] = [1]
 			dataset.append( (question, chunks_list, labels_list) )
 	return dataset
-			
+
+
+
+def hotpotqa_prepare_data(mode): #[(question, [[chunk1, chunk2, ..]], [[label1, label2, ..]])]
+	obj, dataset = json.loads(file_get_contents("./data/hotpotqa/hotpot_dev_distractor_v1.json")), [] #7405 datasize
+
+	for q in (obj[:5000] if mode==1 else obj[-100:]):
+		question, sf = q["question"], q["supporting_facts"]
+		chunks_list, labels_list, chunks_n = [], [], 0
+		for x in q["context"]:
+			try:
+				title, paragraphs = x[0], x[1]
+				labels = [0] * len(paragraphs)
+				for fact in sf:
+					if fact[0]==title: labels[fact[1]] = 1
+				chunks_list.append(paragraphs)
+				labels_list.append(labels)
+				chunks_n+=len(labels)
+			except Exception as e:
+				print(e)
+		dataset.append( (question, chunks_list, labels_list) )
+
+	#add more chunks -> 511
+	datasize = len(dataset)
+	for i, q in enumerate(dataset):
+		chunks_n = sum(len(chunks) for chunks in q[1])
+		indexes = list(range(datasize))
+		indexes.remove(i)
+		random.shuffle(indexes)
+		for idx in indexes:
+			chunks = random.choice( dataset[idx][1] )
+			if chunks_n + len(chunks) <= 511:
+				q[1].append(chunks)
+				labels = [0] * len(chunks)
+				q[2].append(labels)
+				chunks_n+=len(chunks)		
+	#endOf add more chunks
+
+	#print(dataset[0], datasize)
+	return dataset
+
+
 
 def analyze(dataset):
 	s,n = 0,0
@@ -157,17 +198,19 @@ def analyze(dataset):
 		print(question)
 		for chunks in chunks_list:
 			for chunk in chunks:
-				#print(chunk)				
+				#print(chunk)
 				s+=len(chunk)
 				n+=1
 
 	print(s / n, len(dataset))	
 
 
+
 if __name__=="__main__":
 	#dataset = msmarco_prepare_data()
 	#dataset = multihop_qa_prepare_data() 
-	dataset = financebench_prepare_data()
-	analyze(dataset)
+	#dataset = financebench_prepare_data()
+	dataset = hotpotqa_prepare_data(1)
+	#analyze(dataset)
 	
 

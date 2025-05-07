@@ -10,10 +10,11 @@ train_size = 2232, test_size = 23
   test on msmarco.validation[:100] = 25/25 top 10, 
   test financebench_3M_2018_10K gives 6/21 top 10
 
+
 #rerank3
-train =  multihop_qa, msmarco.train[:2000],  financebench.3M_2018_10K, financebench.ADOBE_2015_10K
-test checkpoint-29000: financebench.AMAZON_2015_10K = 16 / 23, msmarco.valid[:100] = 25 / 25
-test cohere: financebench.AMAZON_2015_10K = 22/23 top 10 and 19/23 top 5, msmarco.valid[:100] = 25/25
+  train =  multihop_qa, msmarco.train[:2000],  financebench.3M_2018_10K, financebench.ADOBE_2015_10K
+  test checkpoint-29000: financebench.AMAZON_2015_10K = 16 / 23, msmarco.valid[:100] = 25 / 25
+  test cohere: financebench.AMAZON_2015_10K = 22/23 top 10 and 19/23 top 5, msmarco.valid[:100] = 25/25
 
 
 #rerank4
@@ -21,10 +22,10 @@ test cohere: financebench.AMAZON_2015_10K = 22/23 top 10 and 19/23 top 5, msmarc
   test checkpoint-29000: financebench.AMAZON_2015_10K = 18/23 on top 10, 13/23 on top 5
   raw embeddings: financebench.AMAZON_2015_10K = 16/23 on top 5 and 19/23 on top 10
 
+
 #rerank5
   answerdotai/ModernBERT-base gives financebench.AMAZON_2015_10K 9/23
 
-#temp.Apr 29. model trained using positional encoder on only multihop_qa_prepare_data gives 5/23 accuracy
 
 #rerank6
   bert-base-uncased. x = fc1(jina_emb) + bert_base_uncased.embeddings.position_embeddings(pos_ids)
@@ -46,3 +47,12 @@ test cohere: financebench.AMAZON_2015_10K = 22/23 top 10 and 19/23 top 5, msmarc
 
 
 
+#rerank ? 
+  renew jenai-emb
+  bert-base-uncased, x = fc1(ln1(jina_emb)) + embeddings.position_embeddings(position_ids) + segment_emb  where segment_emb is [0,1,1,1,1....] and position_ids [0,1,2,3,4,..T]
+  test financebench.AMAZON_2015_10K = /23 on top 10
+
+
+#rerank 10
+  renew jenai-emb, train set: hotpotqa:5k, multihop:2k, msmarco:2k, financebench:(ADOBE_2015_10K, 3M_2018_10K)
+  bert-base-uncased, x = fc1(ln1(jina_emb))   
