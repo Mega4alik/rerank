@@ -153,9 +153,9 @@ def financebench_prepare_data(dataname):
 
 
 def hotpotqa_prepare_data(mode): #[(question, [[chunk1, chunk2, ..]], [[label1, label2, ..]])]
-	obj, dataset = json.loads(file_get_contents("./data/hotpotqa/hotpot_dev_distractor_v1.json")), [] #7405 datasize
+	obj, dataset = json.loads(file_get_contents("./data/hotpotqa/hotpot_train_v1.1.json" if mode==1 else  "./data/hotpotqa/hotpot_dev_distractor_v1.json")), []
 
-	for q in (obj[:5000] if mode==1 else obj[-100:]):
+	for q in (obj[:20000] if mode==1 else obj[-100:]): #before: dev_distractor[:5k]
 		question, sf = q["question"], q["supporting_facts"]
 		chunks_list, labels_list, chunks_n = [], [], 0
 		for x in q["context"]:
@@ -175,6 +175,7 @@ def hotpotqa_prepare_data(mode): #[(question, [[chunk1, chunk2, ..]], [[label1, 
 	datasize = len(dataset)
 	for i, q in enumerate(dataset):
 		chunks_n = sum(len(chunks) for chunks in q[1])
+		#print("hotpotqa chunks_n before:", chunks_n)
 		indexes = list(range(datasize))
 		indexes.remove(i)
 		random.shuffle(indexes)

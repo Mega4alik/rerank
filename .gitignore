@@ -1,6 +1,7 @@
 model_temp
 temp
 config.py
+data/hotpotqa
 
 __pycache__
 # Cache objects

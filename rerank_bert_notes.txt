@@ -56,3 +56,20 @@ train_size = 2232, test_size = 23
 #rerank 10
   renew jenai-emb, train set: hotpotqa:5k, multihop:2k, msmarco:2k, financebench:(ADOBE_2015_10K, 3M_2018_10K)
   bert-base-uncased, x = fc1(ln1(jina_emb))   
+  test financebench.AMAZON_2015_10K = checkpoint-23500: 19/23 on top 10
+  test hotpotqa = checkpoint-23500: 44-46/55 on top 10, 
+  raw_emb 36/55 top5, 40/55 top10
+  cohere 40/55 top5, 43/55 top10
+
+
+#rerank11
+  bert-base-uncased, x = fc1(ln1(jina_emb)) + embeddings.position_embeddings(position_ids) + doc_emb(doc_ids) where position_ids is [0,1,2,3,1,2,...] and doc_ids is              
+  [0,1,1,1,1,2,2,3,3,3...]
+
+
+
+
+
+
+
+
