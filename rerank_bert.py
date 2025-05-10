@@ -25,7 +25,7 @@ def hashf(st):
 @torch.inference_mode()
 def make_embeddings(dataset, append=False):
 	global emb_cache
-	path = "./temp/rerank_cache.pkl"
+	path = "./temp/test_rerank_cache.pkl" if mode==2 else "./temp/rerank_cache.pkl"
 	if os.path.exists(path):
 		emb_cache = pickle_load(path)
 		print("loaded emb_cache len:", len(emb_cache))
@@ -120,13 +120,14 @@ class MyModel(nn.Module):
 					doc_ids[b, t] = doc_id
 				else:
 					doc_ids[b, t] = doc_id
+		#print("pos, doc ids:", position_ids[0], doc_ids[0])
 		return doc_ids
 
 	def trans(self, a, position_ids):
 		B,T,C = a.size()
 		#position_ids = torch.arange(0, T, dtype=torch.long, device=device) #[0,1,2,..T]
 		pos_emb = self.llm_model.embeddings.position_embeddings(position_ids)
-		doc_emb = self.demb( get_doc_ids(position_ids) )
+		doc_emb = self.demb( self.get_doc_ids(position_ids) )
 
 		#segment_emb 0,1
 		#token_type_ids = np.ones((B,T))
@@ -173,7 +174,7 @@ class MyModel(nn.Module):
 		self.fc1.load_state_dict(checkpoint['fc1_state_dict'])
 		self.fc2.load_state_dict(checkpoint['fc2_state_dict'])
 		self.llm_model.load_state_dict(checkpoint['llm_state_dict'])
-		#self.demb.load_state_dict(checkpoint['demb_state_dict'])
+		self.demb.load_state_dict(checkpoint['demb_state_dict'])
 
 
 class OwnTrainer(Trainer):
@@ -272,12 +273,11 @@ mymodel = None
 mode = 1 #1-train, 2-test, 3-inference
 
 if mode==3: #Inference
-	tester = MyTester()
-	#tester.T248_evaluate()
+	pass
 else: #Train/Test
 	emb_cache = {}
-	if mode==1 and 1==2:
-		datasets = [load_from_disk(f"./temp/dataset_{dname}") for dname in ["multihop", "msmarco", "financebench", "hotpotqa"]]
+	if mode==1 and 1==1:
+		datasets = [load_from_disk(f"./temp/dataset_{dname}") for dname in ["multihop", "msmarco", "hotpotqa_20k"]] #"financebench",
 		mydataset = concatenate_datasets(datasets)
 		make_embeddings(None)
 	else:
@@ -287,17 +287,17 @@ else: #Train/Test
 			#dataset += msmarco_prepare_data(1) #2k
 			#dataset += financebench_prepare_data("3M_2018_10K")
 			#dataset += financebench_prepare_data("ADOBE_2015_10K")
-			dataset = hotpotqa_prepare_data(1)
+			dataset = hotpotqa_prepare_data(1) #20k
 		else: #test
 			#dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
 			dataset = hotpotqa_prepare_data(2) #msmarco_prepare_data(2)
-		make_embeddings(dataset, append=True)
+		make_embeddings(dataset, append=False)
 		d = dataset_to_dict(dataset)
 		del dataset
 		mydataset = Dataset.from_dict(d)
 		del d
-		mydataset.save_to_disk("./temp/dataset_hotpotqa_20k")
-		exit()
+		#mydataset.save_to_disk("./temp/dataset_hotpotqa_20k")
+		#exit()
 		#./endOf prepare data
 
 	mydataset = mydataset.train_test_split(test_size=0.01 if mode==1 else 0.5, seed=42) #0.01 | 0.5
@@ -341,8 +341,8 @@ else: #Train/Test
 		#tokenizer=processor.feature_extractor,
 	)
 	if mode==1:
-		trainer.train("./model_temp/checkpoint-37000")
+		trainer.train("./model_temp/checkpoint-54500")
 	elif mode==2: #test
-		trainer._load_from_checkpoint("./model_temp/checkpoint-60200")
+		trainer._load_from_checkpoint("./model_temp/checkpoint-54500")
 		trainer.evaluate()
 

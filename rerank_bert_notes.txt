@@ -59,12 +59,16 @@ train_size = 2232, test_size = 23
   test financebench.AMAZON_2015_10K = checkpoint-23500: 19/23 on top 10
   test hotpotqa = checkpoint-23500: 44-46/55 on top 10, 
   raw_emb 36/55 top5, 40/55 top10
-  cohere 40/55 top5, 43/55 top10
+  cohere 40/55top5(72.7%), 43/55top10(%78.1)
 
 
 #rerank11
   bert-base-uncased, x = fc1(ln1(jina_emb)) + embeddings.position_embeddings(position_ids) + doc_emb(doc_ids) where position_ids is [0,1,2,3,1,2,...] and doc_ids is              
   [0,1,1,1,1,2,2,3,3,3...]
+  test: 45 / 55
+
+#rerank11.2 
+  hotpotqa join chunks of a question under same doc_id checlpoint_54500: 47/55top10(85.4%), 43/55top5
 
 
 

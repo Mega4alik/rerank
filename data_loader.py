@@ -139,7 +139,7 @@ def financebench_prepare_data(dataname):
 	arr = json.loads(file_get_contents("./data/financebench_"+dataname+".json"))	
 	datasize, dataset, chunks_list_all = min(511, len(arr)), [], []
 	
-	for i in range(datasize): chunks_list_all.append( [ arr[i]['content'] ] )
+	for i in range(datasize): chunks_list_all.append( [arr[i]['content']] )
 
 	for x in arr[:datasize]: #idx, content, keywords, questions
 		if not "questions" in x: continue
@@ -157,19 +157,18 @@ def hotpotqa_prepare_data(mode): #[(question, [[chunk1, chunk2, ..]], [[label1, 
 
 	for q in (obj[:20000] if mode==1 else obj[-100:]): #before: dev_distractor[:5k]
 		question, sf = q["question"], q["supporting_facts"]
-		chunks_list, labels_list, chunks_n = [], [], 0
+		chunks, labels = [], []
 		for x in q["context"]:
 			try:
 				title, paragraphs = x[0], x[1]
-				labels = [0] * len(paragraphs)
+				labels2 = [0] * len(paragraphs)
 				for fact in sf:
-					if fact[0]==title: labels[fact[1]] = 1
-				chunks_list.append(paragraphs)
-				labels_list.append(labels)
-				chunks_n+=len(labels)
+					if fact[0]==title: labels2[fact[1]] = 1
+				chunks.extend(paragraphs) #v1:chunks_list.append([..]) v2: chunks.extend([..])
+				labels.extend(labels2)
 			except Exception as e:
 				print(e)
-		dataset.append( (question, chunks_list, labels_list) )
+		dataset.append( (question, [chunks], [labels]) ) #v1:(question, chunks_list, labels_list)
 
 	#add more chunks -> 511
 	datasize = len(dataset)
@@ -211,7 +210,7 @@ if __name__=="__main__":
 	#dataset = msmarco_prepare_data()
 	#dataset = multihop_qa_prepare_data() 
 	#dataset = financebench_prepare_data()
-	dataset = hotpotqa_prepare_data(1)
+	dataset = hotpotqa_prepare_data(2)
 	#analyze(dataset)
 	
 
