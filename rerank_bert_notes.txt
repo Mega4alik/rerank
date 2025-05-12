@@ -68,7 +68,10 @@ train_size = 2232, test_size = 23
   test: 45 / 55
 
 #rerank11.2 
-  hotpotqa join chunks of a question under same doc_id checlpoint_54500: 47/55top10(85.4%), 43/55top5
+  hotpotqa join chunks of a question under same doc_id 
+  checkpoint_54500: 47/55top10(85.4%), 43/55top5, checkpoint_55000: 48/55top10(87.2%)
+  checkpoint_79500 (added_hotpotqa_20k_2): 49/55top10()
+
 
 
 

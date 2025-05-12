@@ -64,7 +64,9 @@ class DataCollator:
 		return list(a_shuffled), list(b_shuffled)
 
 	def __call__(self, features) -> Dict[str, torch.Tensor]:
-		batch = {"input_values": [], "labels":[], "position_ids":[]} #, "chunks_list":[], "labels_list":[], "question":[]
+		batch = {"input_values": [], "labels":[], "position_ids":[]}
+		if COHERE_EVAL: batch = batch | {"chunks_list":[], "labels_list":[], "question":[]}
+
 		for x in features:
 			question, labels_list, chunks_list = x["question"], x["labels_list"], x["chunks_list"]
 			question_emb, chunks_emb = emb_cache[hashf(question)], []
@@ -270,79 +272,76 @@ llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")  
 llm_model = AutoModel.from_pretrained("google-bert/bert-base-uncased")
 mymodel = None
 
-mode = 1 #1-train, 2-test, 3-inference
+mode = 2 #1-train, 2-test, 3-inference
 
-if mode==3: #Inference
-	pass
-else: #Train/Test
-	emb_cache = {}
-	if mode==1 and 1==1:
-		datasets = [load_from_disk(f"./temp/dataset_{dname}") for dname in ["multihop", "msmarco", "hotpotqa_20k"]] #"financebench",
-		mydataset = concatenate_datasets(datasets)
-		make_embeddings(None)
-	else:
-		#prepare data
-		if mode==1: #train
-			#dataset = multihop_qa_prepare_data() #2.2k
-			#dataset += msmarco_prepare_data(1) #2k
-			#dataset += financebench_prepare_data("3M_2018_10K")
-			#dataset += financebench_prepare_data("ADOBE_2015_10K")
-			dataset = hotpotqa_prepare_data(1) #20k
-		else: #test
-			#dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
-			dataset = hotpotqa_prepare_data(2) #msmarco_prepare_data(2)
-		make_embeddings(dataset, append=False)
-		d = dataset_to_dict(dataset)
-		del dataset
-		mydataset = Dataset.from_dict(d)
-		del d
-		#mydataset.save_to_disk("./temp/dataset_hotpotqa_20k")
-		#exit()
-		#./endOf prepare data
+emb_cache = {}
+if mode==1 and 1==1:
+	datasets = [load_from_disk(f"./temp/dataset_{dname}") for dname in ["multihop", "msmarco", "hotpotqa_20k", "hotpotqa_20k_2"]] #"financebench",
+	mydataset = concatenate_datasets(datasets)
+	make_embeddings(None)
+else:
+	#prepare data
+	if mode==1: #train
+		#dataset = multihop_qa_prepare_data() #2.2k
+		#dataset += msmarco_prepare_data(1) #2k
+		#dataset += financebench_prepare_data("3M_2018_10K")
+		#dataset += financebench_prepare_data("ADOBE_2015_10K")
+		dataset = hotpotqa_prepare_data(1) #20k
+	else: #test
+		dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
+		#dataset = hotpotqa_prepare_data(2) #msmarco_prepare_data(2)
+	make_embeddings(dataset, append=False)
+	d = dataset_to_dict(dataset)
+	del dataset
+	mydataset = Dataset.from_dict(d)
+	del d
+	#mydataset.save_to_disk("./temp/dataset_hotpotqa_20k_2")
+	#exit()
+	#./endOf prepare data
 
-	mydataset = mydataset.train_test_split(test_size=0.01 if mode==1 else 0.5, seed=42) #0.01 | 0.5
-	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
-	#endOf prepare data
-	
-	mymodel = MyModel()
-	bce_loss = nn.BCELoss()
-	data_collator = DataCollator()
-	training_args = TrainingArguments(
-	  output_dir="./model_temp/",
-	  #group_by_length=True, length_column_name="len",
-	  per_device_train_batch_size=16, #16 - bert-base US1,
-	  gradient_accumulation_steps=1, #update each 2 * batch_size
-	  fp16=False,
-	  evaluation_strategy="steps",
-	  num_train_epochs=100,
-	  logging_steps=50,
-	  save_steps=500,
-	  eval_steps=500,
-	  per_device_eval_batch_size=23,
-	  learning_rate=1e-5,
-	  dataloader_num_workers=4,
-	  weight_decay=0.005,
-	  warmup_steps=1000,
-	  save_total_limit=2,
-	  ignore_data_skip=True,
-	  remove_unused_columns=False,
-	  #label_names=["labels"], #attempt to solve eval problem
-	  metric_for_best_model="eval_accuracy",
-	  #load_best_model_at_end=True,
-	)
-	print("\n\nstarting training", len(train_dataset), len(val_dataset))
-	trainer = OwnTrainer(
-		model=mymodel,
-		data_collator=data_collator,
-		args=training_args,
-		compute_metrics=compute_metrics,
-		train_dataset=train_dataset,
-		eval_dataset=val_dataset,
-		#tokenizer=processor.feature_extractor,
-	)
-	if mode==1:
-		trainer.train("./model_temp/checkpoint-54500")
-	elif mode==2: #test
-		trainer._load_from_checkpoint("./model_temp/checkpoint-54500")
-		trainer.evaluate()
+mydataset = mydataset.train_test_split(test_size=0.01 if mode==1 else 0.5, seed=42) #0.01 | 0.5
+train_dataset, val_dataset = mydataset["train"], mydataset["test"]
+#endOf prepare data
+
+mymodel = MyModel()
+bce_loss = nn.BCELoss()
+data_collator = DataCollator()
+training_args = TrainingArguments(
+  output_dir="./model_temp/",
+  #group_by_length=True, length_column_name="len",
+  per_device_train_batch_size=16, #16 - bert-base US1,
+  gradient_accumulation_steps=1, #update each 2 * batch_size
+  fp16=False,
+  evaluation_strategy="steps",
+  num_train_epochs=100,
+  logging_steps=50,
+  save_steps=500,
+  eval_steps=500,
+  per_device_eval_batch_size=23,
+  learning_rate=1e-5,
+  dataloader_num_workers=4,
+  weight_decay=0.005,
+  warmup_steps=1000,
+  save_total_limit=2,
+  ignore_data_skip=True,
+  remove_unused_columns=False,
+  #label_names=["labels"], #attempt to solve eval problem
+  metric_for_best_model="eval_accuracy",
+  #load_best_model_at_end=True,
+)
+print("\n\nstarting training", len(train_dataset), len(val_dataset))
+trainer = OwnTrainer(
+	model=mymodel,
+	data_collator=data_collator,
+	args=training_args,
+	compute_metrics=compute_metrics,
+	train_dataset=train_dataset,
+	eval_dataset=val_dataset,
+	#tokenizer=processor.feature_extractor,
+)
+if mode==1:
+	trainer.train("./model_temp/checkpoint-55000")
+elif mode==2: #test
+	trainer._load_from_checkpoint("./model_temp/checkpoint-79500")
+	trainer.evaluate()
 

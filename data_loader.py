@@ -136,18 +136,17 @@ def msmarco_prepare_data(mode): #1-train, 2-test
 
 
 def financebench_prepare_data(dataname):
-	arr = json.loads(file_get_contents("./data/financebench_"+dataname+".json"))	
-	datasize, dataset, chunks_list_all = min(511, len(arr)), [], []
-	
-	for i in range(datasize): chunks_list_all.append( [arr[i]['content']] )
+	arr = json.loads(file_get_contents("./data/financebench_"+dataname+".json"))
+	datasize, dataset, chunks_all = min(511, len(arr)), [], []
+	for i in range(datasize): chunks_all.append( arr[i]['content'] )
 
 	for x in arr[:datasize]: #idx, content, keywords, questions
 		if not "questions" in x: continue
 		for question in x["questions"]:
-			chunks_list = chunks_list_all.copy()
-			labels_list =  [[0]] * len(chunks_list)
-			labels_list[x["idx"]] = [1]
-			dataset.append( (question, chunks_list, labels_list) )
+			chunks = chunks_all.copy()
+			labels =  [0] * len(chunks)
+			labels[x["idx"]] = 1
+			dataset.append( (question, [chunks], [labels]) )
 	return dataset
 
 
@@ -155,7 +154,7 @@ def financebench_prepare_data(dataname):
 def hotpotqa_prepare_data(mode): #[(question, [[chunk1, chunk2, ..]], [[label1, label2, ..]])]
 	obj, dataset = json.loads(file_get_contents("./data/hotpotqa/hotpot_train_v1.1.json" if mode==1 else  "./data/hotpotqa/hotpot_dev_distractor_v1.json")), []
 
-	for q in (obj[:20000] if mode==1 else obj[-100:]): #before: dev_distractor[:5k]
+	for q in (obj[20000:40000] if mode==1 else obj[-100:]): #train _20k[0:20k], _20k_2[20k:40k]
 		question, sf = q["question"], q["supporting_facts"]
 		chunks, labels = [], []
 		for x in q["context"]:
