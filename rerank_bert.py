@@ -288,8 +288,8 @@ else:
 		#dataset += financebench_prepare_data("ADOBE_2015_10K")
 		dataset = hotpotqa_prepare_data(1) #20k
 	else: #test
-		dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
-		#dataset = hotpotqa_prepare_data(2) #msmarco_prepare_data(2)
+		#dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
+		dataset = hotpotqa_prepare_data(2) #msmarco_prepare_data(2)
 	make_embeddings(dataset, append=False)
 	d = dataset_to_dict(dataset)
 	del dataset
@@ -317,12 +317,12 @@ training_args = TrainingArguments(
   logging_steps=50,
   save_steps=500,
   eval_steps=500,
-  per_device_eval_batch_size=23,
+  per_device_eval_batch_size=(100 if mode==2 else 23),
   learning_rate=1e-5,
   dataloader_num_workers=4,
   weight_decay=0.005,
   warmup_steps=1000,
-  save_total_limit=2,
+  save_total_limit=4,
   ignore_data_skip=True,
   remove_unused_columns=False,
   #label_names=["labels"], #attempt to solve eval problem
@@ -340,8 +340,8 @@ trainer = OwnTrainer(
 	#tokenizer=processor.feature_extractor,
 )
 if mode==1:
-	trainer.train("./model_temp/checkpoint-55000")
+	trainer.train("./model_temp/checkpoint-91000")
 elif mode==2: #test
-	trainer._load_from_checkpoint("./model_temp/checkpoint-79500")
+	trainer._load_from_checkpoint("./model_temp/checkpoint-134500")
 	trainer.evaluate()
 
