@@ -154,8 +154,8 @@ def financebench_prepare_data(dataname):
 def hotpotqa_prepare_data(mode): #[(question, [[chunk1, chunk2, ..]], [[label1, label2, ..]])]
 	obj, dataset = json.loads(file_get_contents("./data/hotpotqa/hotpot_train_v1.1.json" if mode==1 else  "./data/hotpotqa/hotpot_dev_distractor_v1.json")), []
 
-	for q in (obj[20000:40000] if mode==1 else obj[-100:]): #train _20k[0:20k], _20k_2[20k:40k]
-		question, sf = q["question"], q["supporting_facts"]
+	for q in (obj[0:20000:] if mode==1 else obj[-100:]): #train _20k[0:20k], _20k_2[20k:40k]
+		question, sf, answer = q["question"], q["supporting_facts"], q["answer"]
 		chunks, labels = [], []
 		for x in q["context"]:
 			try:
@@ -167,7 +167,7 @@ def hotpotqa_prepare_data(mode): #[(question, [[chunk1, chunk2, ..]], [[label1, 
 				labels.extend(labels2)
 			except Exception as e:
 				print(e)
-		dataset.append( (question, [chunks], [labels]) ) #v1:(question, chunks_list, labels_list)
+		dataset.append( (question, [chunks], [labels], answer) )
 
 	#add more chunks -> 511
 	datasize = len(dataset)

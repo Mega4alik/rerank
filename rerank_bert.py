@@ -23,13 +23,13 @@ def hashf(st):
 
 
 @torch.inference_mode()
-def make_embeddings(dataset, append=False):
+def make_embeddings(mode, dataset, append=False):
 	global emb_cache
 	path = "./temp/test_rerank_cache.pkl" if mode==2 else "./temp/rerank_cache.pkl"
 	if os.path.exists(path):
 		emb_cache = pickle_load(path)
 		print("loaded emb_cache len:", len(emb_cache))
-		if not append: return
+		if not append: return emb_cache
 	
 	embedding_model = AutoModel.from_pretrained("jinaai/jina-embeddings-v3", trust_remote_code=True)
 	embedding_model.eval()
@@ -44,6 +44,7 @@ def make_embeddings(dataset, append=False):
 				if h not in emb_cache: emb_cache[h] = embedding_model.encode([chunk], task="retrieval.passage")[0]
 	
 	pickle_save(path, emb_cache)
+	return emb_cache
 
 
 def dataset_to_dict(dataset):
@@ -267,81 +268,82 @@ if COHERE_EVAL:
 
 
 ###################### __main__ ###########################
-gpu, device = True, torch.device("cuda")
-llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")  #bert-large-uncased
-llm_model = AutoModel.from_pretrained("google-bert/bert-base-uncased")
-mymodel = None
+if __name__=="__main__":
+	gpu, device = True, torch.device("cuda")
+	llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")  #bert-large-uncased
+	llm_model = AutoModel.from_pretrained("google-bert/bert-base-uncased")
+	mymodel = None
 
-mode = 2 #1-train, 2-test, 3-inference
+	mode = 2 #1-train, 2-test, 3-inference
 
-emb_cache = {}
-if mode==1 and 1==1:
-	datasets = [load_from_disk(f"./temp/dataset_{dname}") for dname in ["multihop", "msmarco", "hotpotqa_20k", "hotpotqa_20k_2"]] #"financebench",
-	mydataset = concatenate_datasets(datasets)
-	make_embeddings(None)
-else:
-	#prepare data
-	if mode==1: #train
-		#dataset = multihop_qa_prepare_data() #2.2k
-		#dataset += msmarco_prepare_data(1) #2k
-		#dataset += financebench_prepare_data("3M_2018_10K")
-		#dataset += financebench_prepare_data("ADOBE_2015_10K")
-		dataset = hotpotqa_prepare_data(1) #20k
-	else: #test
-		#dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
-		dataset = hotpotqa_prepare_data(2) #msmarco_prepare_data(2)
-	make_embeddings(dataset, append=False)
-	d = dataset_to_dict(dataset)
-	del dataset
-	mydataset = Dataset.from_dict(d)
-	del d
-	#mydataset.save_to_disk("./temp/dataset_hotpotqa_20k_2")
-	#exit()
-	#./endOf prepare data
+	emb_cache = {}
+	if mode==1 and 1==1:
+		datasets = [load_from_disk(f"./temp/dataset_{dname}") for dname in ["multihop", "msmarco", "hotpotqa_20k", "hotpotqa_20k_2"]] #"financebench",
+		mydataset = concatenate_datasets(datasets)
+		make_embeddings(mode, None)
+	else:
+		#prepare data
+		if mode==1: #train
+			#dataset = multihop_qa_prepare_data() #2.2k
+			#dataset += msmarco_prepare_data(1) #2k
+			#dataset += financebench_prepare_data("3M_2018_10K")
+			#dataset += financebench_prepare_data("ADOBE_2015_10K")
+			dataset = hotpotqa_prepare_data(1) #20k
+		else: #test
+			#dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
+			dataset = hotpotqa_prepare_data(2) #msmarco_prepare_data(2)
+		make_embeddings(mode, dataset, append=False)
+		d = dataset_to_dict(dataset)
+		del dataset
+		mydataset = Dataset.from_dict(d)
+		del d
+		#mydataset.save_to_disk("./temp/dataset_hotpotqa_20k_2")
+		#exit()
+		#./endOf prepare data
 
-mydataset = mydataset.train_test_split(test_size=0.01 if mode==1 else 0.5, seed=42) #0.01 | 0.5
-train_dataset, val_dataset = mydataset["train"], mydataset["test"]
-#endOf prepare data
+	mydataset = mydataset.train_test_split(test_size=0.01 if mode==1 else 0.5, seed=42) #0.01 | 0.5
+	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
+	#endOf prepare data
 
-mymodel = MyModel()
-bce_loss = nn.BCELoss()
-data_collator = DataCollator()
-training_args = TrainingArguments(
-  output_dir="./model_temp/",
-  #group_by_length=True, length_column_name="len",
-  per_device_train_batch_size=16, #16 - bert-base US1,
-  gradient_accumulation_steps=1, #update each 2 * batch_size
-  fp16=False,
-  evaluation_strategy="steps",
-  num_train_epochs=100,
-  logging_steps=50,
-  save_steps=500,
-  eval_steps=500,
-  per_device_eval_batch_size=(100 if mode==2 else 23),
-  learning_rate=1e-5,
-  dataloader_num_workers=4,
-  weight_decay=0.005,
-  warmup_steps=1000,
-  save_total_limit=4,
-  ignore_data_skip=True,
-  remove_unused_columns=False,
-  #label_names=["labels"], #attempt to solve eval problem
-  metric_for_best_model="eval_accuracy",
-  #load_best_model_at_end=True,
-)
-print("\n\nstarting training", len(train_dataset), len(val_dataset))
-trainer = OwnTrainer(
-	model=mymodel,
-	data_collator=data_collator,
-	args=training_args,
-	compute_metrics=compute_metrics,
-	train_dataset=train_dataset,
-	eval_dataset=val_dataset,
-	#tokenizer=processor.feature_extractor,
-)
-if mode==1:
-	trainer.train("./model_temp/checkpoint-91000")
-elif mode==2: #test
-	trainer._load_from_checkpoint("./model_temp/checkpoint-134500")
-	trainer.evaluate()
+	mymodel = MyModel()
+	bce_loss = nn.BCELoss()
+	data_collator = DataCollator()
+	training_args = TrainingArguments(
+	  output_dir="./model_temp/",
+	  #group_by_length=True, length_column_name="len",
+	  per_device_train_batch_size=16, #16 - bert-base US1,
+	  gradient_accumulation_steps=1, #update each 2 * batch_size
+	  fp16=False,
+	  evaluation_strategy="steps",
+	  num_train_epochs=100,
+	  logging_steps=50,
+	  save_steps=500,
+	  eval_steps=500,
+	  per_device_eval_batch_size=(100 if mode==2 else 23),
+	  learning_rate=1e-5,
+	  dataloader_num_workers=4,
+	  weight_decay=0.005,
+	  warmup_steps=1000,
+	  save_total_limit=4,
+	  ignore_data_skip=True,
+	  remove_unused_columns=False,
+	  #label_names=["labels"], #attempt to solve eval problem
+	  metric_for_best_model="eval_accuracy",
+	  #load_best_model_at_end=True,
+	)
+	print("\n\nstarting training", len(train_dataset), len(val_dataset))
+	trainer = OwnTrainer(
+		model=mymodel,
+		data_collator=data_collator,
+		args=training_args,
+		compute_metrics=compute_metrics,
+		train_dataset=train_dataset,
+		eval_dataset=val_dataset,
+		#tokenizer=processor.feature_extractor,
+	)
+	if mode==1:
+		trainer.train("./model_temp/checkpoint-91000")
+	elif mode==2: #test
+		trainer._load_from_checkpoint("./model_temp/checkpoint-134500")
+		trainer.evaluate()
 
