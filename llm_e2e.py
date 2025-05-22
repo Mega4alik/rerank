@@ -157,7 +157,7 @@ def compute_metrics(x):
 	label_ids[label_ids == -100] = llm_tokenizer.pad_token_id
 	label_str = llm_tokenizer.batch_decode(label_ids, skip_special_tokens=True)
 	wer = wer_metric.compute(predictions=pred_str, references=label_str)
-	print(wer, len(pred_str), pred_str[:3], " -- label_str:", label_str[:3])
+	print(wer, len(pred_str), pred_str[:3 if mode==1 else 100], " -- label_str:", label_str[:3 if mode==1 else 100])
 	return {"eval_accuracy": wer}
 
 
@@ -172,21 +172,21 @@ mode = 1 #1-train, 2-test, 3-inference
 emb_cache = {}
 
 if mode==1 and 1==1:
-	datasets = [load_from_disk(f"./temp/dataset_{dname}") for dname in ["hotpotqa_20k_1", "hotpotqa_20k_2"]]
+	datasets = [load_from_disk(f"./temp/dataset_{dname}") for dname in ["hotpotqa_40k"]]
 	mydataset = concatenate_datasets(datasets)
 	emb_cache = make_embeddings(mode, None)
 else:
 	#prepare data
 	if mode==1: #train
-		dataset = hotpotqa_prepare_data(1) #20k
+		dataset = hotpotqa_prepare_data(1) #40k
 	else: #test		
 		dataset = hotpotqa_prepare_data(2)
-	emb_cache = make_embeddings(mode, dataset, append=False)
+	emb_cache = make_embeddings(mode, dataset, append=True)
 	d = dataset_to_dict(dataset)
 	del dataset
 	mydataset = Dataset.from_dict(d)
 	del d
-	#mydataset.save_to_disk("./temp/dataset_hotpotqa_20k_1")
+	#mydataset.save_to_disk("./temp/dataset_hotpotqa_40k")
 	#exit()
 	#./endOf prepare data
 
@@ -204,7 +204,7 @@ training_args = TrainingArguments(
 	gradient_accumulation_steps=1, #update each 2 * batch_size
 	fp16=False,
 	evaluation_strategy="steps",
-	num_train_epochs=100,
+	num_train_epochs=200,
 	logging_steps=50,
 	save_steps=500,
 	eval_steps=500,
@@ -218,6 +218,7 @@ training_args = TrainingArguments(
 	remove_unused_columns=False,
 	#label_names=["labels"], #attempt to solve eval problem
 	metric_for_best_model="eval_accuracy",
+	greater_is_better=False,
 	#load_best_model_at_end=True,
 )
 print("\n\nstarting training", len(train_dataset), len(val_dataset))
@@ -231,8 +232,8 @@ trainer = OwnTrainer(
 	#tokenizer=processor.feature_extractor,
 )
 if mode==1:
-	trainer.train()
+	trainer.train("./model_temp/checkpoint-211000")
 elif mode==2: #test
-	trainer._load_from_checkpoint("./model_temp/checkpoint-134500")
+	trainer._load_from_checkpoint("./model_temp/checkpoint-211000")
 	trainer.evaluate()
 

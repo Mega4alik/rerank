@@ -154,7 +154,7 @@ def financebench_prepare_data(dataname):
 def hotpotqa_prepare_data(mode): #[(question, [[chunk1, chunk2, ..]], [[label1, label2, ..]])]
 	obj, dataset = json.loads(file_get_contents("./data/hotpotqa/hotpot_train_v1.1.json" if mode==1 else  "./data/hotpotqa/hotpot_dev_distractor_v1.json")), []
 
-	for q in (obj[0:20000:] if mode==1 else obj[-100:]): #train _20k[0:20k], _20k_2[20k:40k]
+	for q in (obj[0:40000] if mode==1 else obj[-100:]): #train _20k_1[0:20k], _20k_2[20k:40k]
 		question, sf, answer = q["question"], q["supporting_facts"], q["answer"]
 		chunks, labels = [], []
 		for x in q["context"]:

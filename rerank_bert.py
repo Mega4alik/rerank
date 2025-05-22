@@ -34,8 +34,8 @@ def make_embeddings(mode, dataset, append=False):
 	embedding_model = AutoModel.from_pretrained("jinaai/jina-embeddings-v3", trust_remote_code=True)
 	embedding_model.eval()
 	embedding_model.cuda()
-	for step, (question, chunks_list, labels_list) in enumerate(dataset):
-		print(f"\rEmb: {step}/2555", end="", flush=True)
+	for step, (question, chunks_list, labels_list, answer) in enumerate(dataset):
+		print(f"\rEmb: {step}/{len(dataset)}", end="", flush=True)
 		h = hashf(question)
 		if h not in emb_cache: emb_cache[h] = embedding_model.encode([question], task="retrieval.query")[0]
 		for chunks in chunks_list:			
@@ -268,6 +268,8 @@ if COHERE_EVAL:
 
 
 ###################### __main__ ###########################
+emb_cache = {}
+
 if __name__=="__main__":
 	gpu, device = True, torch.device("cuda")
 	llm_tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")  #bert-large-uncased
@@ -276,7 +278,6 @@ if __name__=="__main__":
 
 	mode = 2 #1-train, 2-test, 3-inference
 
-	emb_cache = {}
 	if mode==1 and 1==1:
 		datasets = [load_from_disk(f"./temp/dataset_{dname}") for dname in ["multihop", "msmarco", "hotpotqa_20k", "hotpotqa_20k_2"]] #"financebench",
 		mydataset = concatenate_datasets(datasets)
