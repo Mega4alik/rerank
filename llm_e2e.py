@@ -1,5 +1,5 @@
 # venv asr3.8 - US1
-# t5 end to end solution for hotpotqa. token embeddings replaced with jinai embedding -- in progress 
+# t5 end to end answer generation for hotpotqa. token embeddings replaced with jinai embedding -- RESULTS are terrible. It does not make sense to do it this way
 import numpy as np
 import json
 import os
@@ -107,7 +107,7 @@ class MyModel(nn.Module):
 		return out
 
 	def generate(self, x, position_ids):
-		pred = self.llm_model.generate(inputs_embeds=self.trans(x, position_ids), max_new_tokens=20, do_sample=True, num_beams=5, temperature=0.3)
+		pred = self.llm_model.generate(inputs_embeds=self.trans(x, position_ids), max_new_tokens=20, do_sample=True, num_beams=5, temperature=0.1)
 		return pred
 
 	def _load_from_checkpoint(self, load_directory):
@@ -235,6 +235,6 @@ trainer = OwnTrainer(
 if mode==1:
 	trainer.train("./model_temp/checkpoint-211000")
 elif mode==2: #test
-	trainer._load_from_checkpoint("./model_temp/checkpoint-343500")
+	trainer._load_from_checkpoint("./model_temp/checkpoint-404000")
 	trainer.evaluate()
 
