@@ -107,7 +107,7 @@ class MyModel(nn.Module):
 		return out
 
 	def generate(self, x, position_ids):
-		pred = self.llm_model.generate(inputs_embeds=self.trans(x, position_ids), max_new_tokens=512, do_sample=False, num_beams=5, temperature=0.01)
+		pred = self.llm_model.generate(inputs_embeds=self.trans(x, position_ids), max_new_tokens=20, do_sample=True, num_beams=5, temperature=0.3)
 		return pred
 
 	def _load_from_checkpoint(self, load_directory):
@@ -157,7 +157,8 @@ def compute_metrics(x):
 	label_ids[label_ids == -100] = llm_tokenizer.pad_token_id
 	label_str = llm_tokenizer.batch_decode(label_ids, skip_special_tokens=True)
 	wer = wer_metric.compute(predictions=pred_str, references=label_str)
-	print(wer, len(pred_str), pred_str[:3 if mode==1 else 100], " -- label_str:", label_str[:3 if mode==1 else 100])
+	print(wer, len(pred_str))
+	for i in range(3 if mode==1 else len(pred_str)): print(label_str[i], "-- p:", pred_str[i])
 	return {"eval_accuracy": wer}
 
 
@@ -168,7 +169,7 @@ llm_model = T5ForConditionalGeneration.from_pretrained("t5-small")
 wer_metric = evaluate.load("wer")
 mymodel = None
 
-mode = 1 #1-train, 2-test, 3-inference
+mode = 2 #1-train, 2-test, 3-inference
 emb_cache = {}
 
 if mode==1 and 1==1:
@@ -234,6 +235,6 @@ trainer = OwnTrainer(
 if mode==1:
 	trainer.train("./model_temp/checkpoint-211000")
 elif mode==2: #test
-	trainer._load_from_checkpoint("./model_temp/checkpoint-211000")
+	trainer._load_from_checkpoint("./model_temp/checkpoint-343500")
 	trainer.evaluate()
 
