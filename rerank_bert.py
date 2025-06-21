@@ -12,10 +12,11 @@ from datasets import Dataset, load_from_disk, concatenate_datasets
 from typing import Any, Dict, List, Optional, Union
 from transformers import Trainer, TrainingArguments, AutoTokenizer, AutoModel
 from utils import file_get_contents, file_put_contents, pickle_load, pickle_save, cosine_similarity
-from data_loader import multihop_qa_prepare_data, msmarco_prepare_data, financebench_prepare_data, hotpotqa_prepare_data
+from data_loader import multihop_qa_prepare_data, msmarco_prepare_data, financebench_prepare_data, hotpotqa_prepare_data, webapi_prepare_data
 
 COHERE_EVAL = False #whether we are evaluationg cohere rerank now
 RAW_EMBEDDINGS_EVAL = False
+WEBAPI_EVAL = True
 
 def hashf(st):
 	if len(st) < 120: return st
@@ -50,7 +51,7 @@ def make_embeddings(mode, dataset, append=False):
 def dataset_to_dict(dataset):
 	d = {}
 	for (question, chunks_list, labels_list) in dataset:
-		for o in [ ("question", question), ("chunks_list", chunks_list), ("labels_list", labels_list), ]:
+		for o in [ ("question", question), ("chunks_list", chunks_list), ("labels_list", labels_list)]:
 			k, v = o[0], o[1]
 			if k not in d: d[k] = []
 			d[k].append(v)
@@ -66,14 +67,14 @@ class DataCollator:
 
 	def __call__(self, features) -> Dict[str, torch.Tensor]:
 		batch = {"input_values": [], "labels":[], "position_ids":[]}
-		if COHERE_EVAL: batch = batch | {"chunks_list":[], "labels_list":[], "question":[]}
+		if COHERE_EVAL or WEBAPI_EVAL: batch = batch | {"chunks_list":[], "labels_list":[], "question":[]}
 
 		for x in features:
 			question, labels_list, chunks_list = x["question"], x["labels_list"], x["chunks_list"]
 			question_emb, chunks_emb = emb_cache[hashf(question)], []
 			for chunks in chunks_list:
 				chunks_emb.append( [emb_cache[hashf(chunk)] for chunk in chunks] )
-			if not COHERE_EVAL: chunks_emb, labels_list = self.shuffle_lists(chunks_emb, labels_list)
+			if not COHERE_EVAL and not WEBAPI_EVAL: chunks_emb, labels_list = self.shuffle_lists(chunks_emb, labels_list)
 			
 			input_values, labels, position_ids = [question_emb], [0], [0] #input value: list of embeddings(list), labels: list of 0/1
 			for i, embs in enumerate(chunks_emb):
@@ -86,9 +87,9 @@ class DataCollator:
 			batch["input_values"].append(input_values)
 			batch["labels"].append(labels)
 			batch["position_ids"].append(position_ids)
-			if COHERE_EVAL:
-				batch["chunks_list"].append(chunks_list) #temp for cohere
-				batch["labels_list"].append(labels_list) #temp for cohere
+			if COHERE_EVAL or WEBAPI_EVAL:
+				batch["chunks_list"].append(chunks_list) #temp for cohere | webapi
+				batch["labels_list"].append(labels_list) #temp for cohere | webapi
 				batch["question"].append(question) #temp for cohere
 
 		batch["input_values"] = pad_sequence(batch["input_values"], batch_first=True, padding_value=0) #B,S,C
@@ -131,7 +132,6 @@ class MyModel(nn.Module):
 		#position_ids = torch.arange(0, T, dtype=torch.long, device=device) #[0,1,2,..T]
 		pos_emb = self.llm_model.embeddings.position_embeddings(position_ids)
 		doc_emb = self.demb( self.get_doc_ids(position_ids) )
-
 		#segment_emb 0,1
 		#token_type_ids = np.ones((B,T))
 		#token_type_ids[:,0] = 0
@@ -189,8 +189,8 @@ class OwnTrainer(Trainer):
 			if COHERE_EVAL: return cohere_rerank(inputs["question"], inputs["chunks_list"], inputs["labels_list"])
 			with torch.no_grad():
 				pred = self.model.generate(inputs['input_values'], inputs['position_ids']) #B,S
-			return compute_metrics({"predictions":pred, "labels":inputs['labels']})	
-			
+			if WEBAPI_EVAL: return webapi_compute_metrics({"predictions":pred, "chunks_list":inputs['chunks_list'],  "question":inputs['question'] })
+			return compute_metrics({"predictions":pred, "labels":inputs['labels']})
 
 	def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False): #called from Trainer._save_checkpoint	
 		save_directory, model = output_dir, self.model
@@ -227,7 +227,20 @@ def compute_metrics(x):
 	return {"eval_accuracy": (correct / n) }
 
 
-#========== raw embeddings =======================
+#========== webapi eval ===============
+def webapi_compute_metrics(x):
+	batch_preds = x["predictions"]
+	for i in range(len(batch_preds)):
+		chunks_all = ["NONE"]
+		for chunks in x["chunks_list"][i]: chunks_all.extend(chunks)
+		probs = batch_preds[i]
+		top_indices = torch.topk(probs, 5).indices.detach().tolist()
+		print("\n================\n[Q]", x["question"][i])
+		for idx in top_indices: print("\n[Candidate]", chunks_all[idx].lstrip('\n'), probs[idx].item())
+	return {"eval_accuracy": 1.0}
+#========== ./endOf webapi eval ==========
+
+#========== raw embeddings ==========
 def test_raw_embeddings(batch_input_values, batch_labels):
 	correct, n = 0, 0
 	for i in range(len(batch_labels)):
@@ -241,7 +254,7 @@ def test_raw_embeddings(batch_input_values, batch_labels):
 			if lidx in top_indices: correct+=1
 			n+=1
 		print(labels_ones, top_indices, correct, n)
-#========== ./endOf raw embeddings =================
+#========== ./endOf raw embeddings ==========
 
 #==== cohere ========
 if COHERE_EVAL:
@@ -292,7 +305,9 @@ if __name__=="__main__":
 			dataset = hotpotqa_prepare_data(1) #20k
 		else: #test
 			#dataset = financebench_prepare_data("AMAZON_2015_10K") # | msmarco_prepare_data(2)
-			dataset = hotpotqa_prepare_data(2) #msmarco_prepare_data(2)
+			#dataset = hotpotqa_prepare_data(2) #msmarco_prepare_data(2)
+			dataset = webapi_prepare_data()
+
 		make_embeddings(mode, dataset, append=False)
 		d = dataset_to_dict(dataset)
 		del dataset
@@ -302,7 +317,7 @@ if __name__=="__main__":
 		#exit()
 		#./endOf prepare data
 
-	mydataset = mydataset.train_test_split(test_size=0.01 if mode==1 else 0.5, seed=42) #0.01 | 0.5
+	mydataset = mydataset.train_test_split(test_size=0.01 if mode==1 else 0.9, seed=42) #0.01 | 0.5
 	train_dataset, val_dataset = mydataset["train"], mydataset["test"]
 	#endOf prepare data
 
@@ -314,11 +329,11 @@ if __name__=="__main__":
 	  #group_by_length=True, length_column_name="len",
 	  per_device_train_batch_size=16, #16 - bert-base US1,
 	  gradient_accumulation_steps=1, #update each 2 * batch_size
-	  fp16=False,
-	  evaluation_strategy="steps",
+	  fp16=False,	  
 	  num_train_epochs=100,
 	  logging_steps=50,
 	  save_steps=500,
+	  eval_strategy="steps",
 	  eval_steps=500,
 	  per_device_eval_batch_size=(100 if mode==2 else 23),
 	  learning_rate=1e-5,
@@ -345,6 +360,6 @@ if __name__=="__main__":
 	if mode==1:
 		trainer.train("./model_temp/checkpoint-91000")
 	elif mode==2: #test
-		trainer._load_from_checkpoint("./model_temp/checkpoint-134500")
+		trainer._load_from_checkpoint("./model_temp/checkpoint-134000")
 		trainer.evaluate()
 

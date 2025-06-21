@@ -1,3 +1,4 @@
+import os
 import random
 import json
 from datasets import load_dataset
@@ -190,6 +191,45 @@ def hotpotqa_prepare_data(mode): #[(question, [[chunk1, chunk2, ..]], [[label1, 
 	return dataset
 
 
+def webapi_prepare_data():
+	pre = "./data/enbek/FAQ/"
+	files = os.listdir(pre)
+	chunks_all, labels_all, n = [], [], 0	
+	for fname in files:
+		iskz = True if fname.startswith('KZ_') else False		
+		if iskz: continue
+		lines = file_get_contents(pre+fname).split("\n")
+		meta = lines[0]				
+		assert meta.startswith('#meta:')
+		a = meta.replace("#meta:","").split("=")
+		keywords = a[1].strip()
+		qas = "\n".join(lines[1:]).split("</end>")
+		n+=len(qas)
+		chunks_all.append(qas)
+		labels_all.append([0]*len(qas))
+		#print(fname, keywords, qas, "\n==============\n")
+	
+	#===========================
+	pre, dataset = "./data/enbek/tests/", []
+	files = os.listdir(pre)
+	for fname in files[:]:
+		lines, qas = file_get_contents(pre+fname).split("\n"), []
+		for line in lines:
+			if not line or line.startswith("#"): continue
+			if line.startswith("Q:") or line.startswith("A:"):
+				a = line.split(":", 1)
+				speaker, content = a[0].strip(), a[1].strip()			
+				if speaker=="Q": qas.append(content)
+				else: qas[-1] = (qas[-1], content)
+			else: qas[-1] = (qas[-1][0], qas[-1][1]+"\n"+line)
+		
+		for (question, answer) in qas:
+			#print(q, a, "###")
+			dataset.append( (question, chunks_all, labels_all) ) #, answer
+	print(len(dataset), "chunks_n =", n)
+	return dataset
+		
+
 
 def analyze(dataset):
 	s,n = 0,0
@@ -209,7 +249,8 @@ if __name__=="__main__":
 	#dataset = msmarco_prepare_data()
 	#dataset = multihop_qa_prepare_data() 
 	#dataset = financebench_prepare_data()
-	dataset = hotpotqa_prepare_data(2)
+	#dataset = hotpotqa_prepare_data(2)
+	enbek_prepare_data()
 	#analyze(dataset)
 	
 

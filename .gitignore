@@ -2,6 +2,7 @@ model_temp
 temp
 config.py
 data/hotpotqa
+data/enbek
 
 __pycache__
 # Cache objects
