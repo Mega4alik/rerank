@@ -234,7 +234,7 @@ def webapi_compute_metrics(x):
 		chunks_all = ["NONE"]
 		for chunks in x["chunks_list"][i]: chunks_all.extend(chunks)
 		probs = batch_preds[i]
-		top_indices = torch.topk(probs, 5).indices.detach().tolist()
+		top_indices = torch.topk(probs, 15).indices.detach().tolist()
 		print("\n================\n[Q]", x["question"][i])
 		for idx in top_indices: print("\n[Candidate]", chunks_all[idx].lstrip('\n'), probs[idx].item())
 	return {"eval_accuracy": 1.0}

@@ -192,12 +192,12 @@ def hotpotqa_prepare_data(mode): #[(question, [[chunk1, chunk2, ..]], [[label1, 
 
 
 def webapi_prepare_data():
-	pre = "./data/enbek/FAQ/"
+	pre = "./data/webapi/FAQ/"
 	files = os.listdir(pre)
 	chunks_all, labels_all, n = [], [], 0	
 	for fname in files:
 		iskz = True if fname.startswith('KZ_') else False		
-		if iskz: continue
+		#if iskz: continue
 		lines = file_get_contents(pre+fname).split("\n")
 		meta = lines[0]				
 		assert meta.startswith('#meta:')
@@ -210,9 +210,10 @@ def webapi_prepare_data():
 		#print(fname, keywords, qas, "\n==============\n")
 	
 	#===========================
-	pre, dataset = "./data/enbek/tests/", []
+	pre, dataset = "./data/webapi/tests/", []
 	files = os.listdir(pre)
 	for fname in files[:]:
+		#if fname not in "faq_tests2.txt": continue #temp
 		lines, qas = file_get_contents(pre+fname).split("\n"), []
 		for line in lines:
 			if not line or line.startswith("#"): continue
