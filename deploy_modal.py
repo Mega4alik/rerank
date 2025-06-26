@@ -1,3 +1,4 @@
+# modal deploy deploy_modal.py
 # curl -X POST https://anuarsh--rerank1-web-inference.modal.run -H "Content-Type: application/json" -d '{"question": "как получить справку безработного?"}'
 
 import modal
@@ -6,21 +7,20 @@ import pickle
 from typing import Dict
 import torch
 from transformers import AutoTokenizer, AutoModel
-from modeling import MyModel
 
 def pickle_load(path):
     with open(path, "rb") as file: 
         obj = pickle.load(file)
         return obj
 
-#====================
+
+#===========================================================================================
 app = modal.App("rerank1")
 
 image = modal.Image.debian_slim().pip_install(
-	"torch", "transformers", "accelerate", "fastapi[standard]"
+	"torch", "transformers", "accelerate", "fastapi[standard]", "einops"
 )
 
-#image = image.add_local_file("./modeling.py", remote_path="/modeling.py")
 image = image.add_local_python_source("modeling")
 image = image.add_local_dir("./model_temp/checkpoint-134000", remote_path="/model_checkpoint")
 image = image.add_local_file("./temp/data.pkl", remote_path="/data.pkl")
@@ -36,8 +36,8 @@ class ModelRunner:
 		self.tokenizer = AutoTokenizer.from_pretrained(model_id)
 		self.model = MyModel(model_id)
 		self.model._load_from_checkpoint("/model_checkpoint")
-		self.model.eval()		
-		self.embedding_model = AutoModel.from_pretrained("jinaai/jina-embeddings-v3") #, trust_remote_code=True
+		self.model.eval()
+		self.embedding_model = AutoModel.from_pretrained("jinaai/jina-embeddings-v3", trust_remote_code=True)
 		self.embedding_model.eval()
 		#chunks_list, input_values, position_ids = pickle_load("/data.pkl")
 
